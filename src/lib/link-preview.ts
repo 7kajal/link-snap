@@ -1,10 +1,12 @@
+import { getWorkerBaseUrl, getYouTubeWorkerUrl } from "@/lib/config";
+
 export type YouTubeKind = "video" | "short" | "live" | "premiere";
 
 export type SpotifyKind = "track" | "album" | "playlist" | "artist" | "show" | "episode";
 
 export type TwitchKind = "live" | "clip" | "video" | "channel";
 
-export type CommerceStore = "amazon" | "flipkart" | "meesho" | "ebay" | "etsy" | "other";
+export type CommerceStore = "amazon" | "flipkart" | "meesho" | "ebay" | "etsy" | "aliexpress" | "other";
 
 export type LinkPreview = {
   url: string;
@@ -69,6 +71,42 @@ export type LinkPreview = {
   commerceRating: number | null;
   commerceReviews: number | null;
   commerceSeller: string | null;
+  /** LinkedIn post (OG/manual; template auto-selects the LinkedIn layout). */
+  isLinkedIn: boolean;
+  headline: string | null;
+  repostCount: number | null;
+  /** Indeed job posting (JobPosting JSON-LD when fetchable). */
+  isIndeed: boolean;
+  salary: string | null;
+  jobType: string | null;
+  jobLocation: string | null;
+  /** Zomato / Swiggy restaurant (OG + Restaurant JSON-LD, best-effort). */
+  isZomato: boolean;
+  isSwiggy: boolean;
+  cuisine: string | null;
+  area: string | null;
+  eta: string | null;
+  /** Pinterest pin (OG tags). */
+  isPinterest: boolean;
+  /** App Store / Play Store app (iTunes lookup API keyless; Play via OG). */
+  isApp: boolean;
+  appPlatform: "ios" | "android" | null;
+  downloads: string | null;
+  category: string | null;
+  /** Airbnb / stay listing (OG + markdown, best-effort). */
+  isStay: boolean;
+  hostName: string | null;
+  /** Steam game (keyless storefront API). */
+  isGame: boolean;
+  genre: string | null;
+  releaseDate: string | null;
+  /** Book (Goodreads Book JSON-LD / Open Library, best-effort). */
+  isBook: boolean;
+  pages: number | null;
+  /** Product Hunt launch (OG tags; upvotes manual). */
+  isLaunch: boolean;
+  tagline: string | null;
+  upvotes: number | null;
 };
 
 export type TwitchWorkerPayload = {
@@ -120,6 +158,33 @@ function platformDefaults() {
     commerceRating: null as number | null,
     commerceReviews: null as number | null,
     commerceSeller: null as string | null,
+    isLinkedIn: false,
+    headline: null as string | null,
+    repostCount: null as number | null,
+    isIndeed: false,
+    salary: null as string | null,
+    jobType: null as string | null,
+    jobLocation: null as string | null,
+    isZomato: false,
+    isSwiggy: false,
+    cuisine: null as string | null,
+    area: null as string | null,
+    eta: null as string | null,
+    isPinterest: false,
+    isApp: false,
+    appPlatform: null as "ios" | "android" | null,
+    downloads: null as string | null,
+    category: null as string | null,
+    isStay: false,
+    hostName: null as string | null,
+    isGame: false,
+    genre: null as string | null,
+    releaseDate: null as string | null,
+    isBook: false,
+    pages: null as number | null,
+    isLaunch: false,
+    tagline: null as string | null,
+    upvotes: null as number | null,
   };
 }
 
@@ -954,6 +1019,7 @@ export function commerceStoreFromUrl(url: string): CommerceStore | null {
     if (host.includes("meesho.")) return "meesho";
     if (host.includes("ebay.")) return "ebay";
     if (host.includes("etsy.")) return "etsy";
+    if (host.includes("aliexpress.")) return "aliexpress";
     return null;
   } catch {
     return null;
@@ -980,6 +1046,22 @@ export function parseEbayId(input: string): string | null {
 
 export function isEbayUrl(url: string): boolean {
   return parseEbayId(url) != null;
+}
+
+/** Depth-first search for a JSON-LD node whose @type matches any of `types`. */
+function findLdNode(data: unknown, types: string[]): Record<string, unknown> | null {
+  const arr = Array.isArray(data) ? data : [data];
+  for (const node of arr) {
+    if (!node || typeof node !== "object") continue;
+    const n = node as Record<string, unknown>;
+    const t = Array.isArray(n["@type"]) ? n["@type"] : [n["@type"]];
+    if (types.some((ty) => t.includes(ty))) return n;
+    if (Array.isArray(n["@graph"])) {
+      const found = findLdNode(n["@graph"], types);
+      if (found) return found;
+    }
+  }
+  return null;
 }
 
 /** Extract the first Product JSON-LD block from item HTML. */
@@ -1195,7 +1277,7 @@ async function fetchMarketplacePreview(
   url: string,
   store: CommerceStore,
 ): Promise<LinkPreview | null> {
-  if (store !== "amazon" && store !== "flipkart" && store !== "meesho") return null;
+  if (store !== "amazon" && store !== "flipkart" && store !== "meesho" && store !== "aliexpress") return null;
   try {
     const res = await fetch(url, {
       headers: { Accept: "text/html,application/xhtml+xml" },
@@ -1205,10 +1287,37 @@ async function fetchMarketplacePreview(
     if (!html || !html.includes("<")) return null;
     if (store === "amazon") return parseAmazonHtml(html, url);
     if (store === "flipkart") return parseFlipkartHtml(html, url);
+    if (store === "aliexpress") return parseAliexpressHtml(html, url);
     return parseMeeshoHtml(html, url);
   } catch {
     return null; // CORS / network — generic chain + manual fields take over
   }
+}
+
+/** AliExpress SSR embeds the price as JSON strings; OG tags carry the rest. */
+export function parseAliexpressHtml(html: string, url: string): LinkPreview | null {
+  if (!html.includes("<")) return null;
+  const og = parseOpenGraph(html, url);
+  const price =
+    html.match(/"formattedAmount":"?([^",}]+)"?/)?.[1] ||
+    html.match(/"salePrice"?:\s*"?([\d.,]+)"?/)?.[1] ||
+    html.match(/<meta[^>]+property=["']og:price:amount["'][^>]+content=["']([\d.,]+)["']/i)?.[1] ||
+    null;
+  const currency =
+    html.match(/<meta[^>]+property=["']og:price:currency["'][^>]+content=["']([^"']+)["']/i)?.[1] ||
+    html.match(/"currency":"([A-Z]{3})"/)?.[1] ||
+    null;
+  const rating = parseFloat(html.match(/"avgRating"?:\s*"?([\d.]+)"?/)?.[1] || "");
+  const reviews = parseInt(html.match(/"tradeCount"?:\s*"?(\d+)"?/)?.[1] || html.match(/"orderQuantity"?:\s*"?(\d+)"?/)?.[1] || "", 10);
+  return {
+    ...og,
+    siteName: "AliExpress",
+    isCommerce: true,
+    commerceStore: "aliexpress",
+    commercePrice: price ? `${currency ? `${currency} ` : ""}${price}` : null,
+    commerceRating: Number.isFinite(rating) ? rating : null,
+    commerceReviews: Number.isFinite(reviews) && reviews > 0 ? reviews : null,
+  };
 }
 
 async function fetchEbayPreview(url: string): Promise<LinkPreview | null> {  try {
@@ -1240,6 +1349,813 @@ async function fetchEbayPreview(url: string): Promise<LinkPreview | null> {  try
   }
 }
 
+/* ---------------- Shared helpers for product-style platforms ---------------- */
+
+function cleanText(s: string): string {
+  return decodeEntities(s).replace(/\s+/g, " ").trim();
+}
+
+function numOr(value: unknown): number | null {
+  const n = typeof value === "number" ? value : typeof value === "string" ? parseFloat(value) : NaN;
+  return Number.isFinite(n) ? Math.round(n * 10) / 10 : null;
+}
+
+/** Unwrap an object that JSON-LD authors often emit as a single-item array. */
+function firstObj(v: unknown): Record<string, unknown> | null {
+  if (Array.isArray(v)) return v.length && typeof v[0] === "object" && v[0] ? (v[0] as Record<string, unknown>) : null;
+  if (v && typeof v === "object") return v as Record<string, unknown>;
+  return null;
+}
+
+function digPath(root: unknown, path: string[]): unknown {
+  let cur = root;
+  for (const key of path) {
+    if (cur && typeof cur === "object") cur = (cur as Record<string, unknown>)[key];
+    else return undefined;
+  }
+  return cur;
+}
+
+const CURRENCY_SYMBOLS: Record<string, string> = {
+  USD: "$",
+  INR: "₹",
+  EUR: "€",
+  GBP: "£",
+  JPY: "¥",
+  CAD: "CA$",
+  AUD: "A$",
+  RUB: "₽",
+  BRL: "R$",
+};
+
+/** Fetch OG tags directly, else route through the r.jina.ai markdown reader. Never throws. */
+async function fetchOgWithFallback(url: string, siteName: string): Promise<LinkPreview | null> {
+  let html: string | null = null;
+  try {
+    const res = await fetch(url);
+    if (res.ok) {
+      const text = await res.text();
+      if (text && text.includes("<")) html = text;
+    }
+  } catch {
+    // fall through to the proxy
+  }
+  if (html) {
+    const og = parseOpenGraph(html, url);
+    return { ...og, siteName: og.siteName || siteName };
+  }
+  try {
+    const res = await fetch(`https://r.jina.ai/${url}`);
+    if (!res.ok) return null;
+    const md = await res.text();
+    if (!md || !md.trim()) return null;
+    const parsed = parseMarkdown(md, url);
+    return { ...parsed, siteName: parsed.siteName || siteName };
+  } catch {
+    return null;
+  }
+}
+
+/** Skeleton LinkPreview for a brand; platform flags come from the caller. */
+function blankFallback(url: string, siteName: string): LinkPreview {
+  return {
+    url,
+    title: "",
+    description: "",
+    image: null,
+    siteName,
+    author: null,
+    readingMinutes: null,
+    publishedAt: null,
+    isTweet: false,
+    handle: null,
+    avatar: null,
+    verified: false,
+    likeCount: null,
+    replyCount: null,
+    isYouTube: false,
+    youtubeKind: null,
+    youtubeId: null,
+    durationSec: null,
+    viewCount: null,
+    channelThumb: null,
+    scheduledStart: null,
+    concurrentViewers: null,
+    ...platformDefaults(),
+  };
+}
+
+/* ---------------- LinkedIn (post — OG / manual) ---------------- */
+
+export function isLinkedInUrl(url: string): boolean {
+  try {
+    const host = new URL(url.trim()).hostname.toLowerCase();
+    return host === "linkedin.com" || host.endsWith(".linkedin.com");
+  } catch {
+    return false;
+  }
+}
+
+/** Strip the "Author on LinkedIn: …" og:title prefix. */
+export function cleanLinkedInText(text: string): string {
+  const cleaned = text.trim();
+  const m = cleaned.match(/^(.*?)\s+on\s+LinkedIn\s*:\s*([\s\S]*)$/i);
+  return m ? (m[2].trim() || m[1].trim()) : cleaned;
+}
+
+async function fetchLinkedInPreview(url: string): Promise<LinkPreview | null> {
+  const og = await fetchOgWithFallback(url, "LinkedIn");
+  if (!og) return null;
+  const title = cleanLinkedInText(og.title || og.author || og.description || "");
+  return {
+    ...og,
+    siteName: "LinkedIn",
+    isLinkedIn: true,
+    headline: title || null,
+  };
+}
+
+function linkedInFallback(url: string): LinkPreview {
+  return { ...blankFallback(url, "LinkedIn"), isLinkedIn: true };
+}
+
+/* ---------------- Indeed (JobPosting JSON-LD) ---------------- */
+
+export function isIndeedUrl(url: string): boolean {
+  try {
+    const host = new URL(url.trim()).hostname.toLowerCase();
+    return host.includes("indeed.com");
+  } catch {
+    return false;
+  }
+}
+
+function jobSalaryLabel(base: Record<string, unknown>, str: (v: unknown) => string | null): string | null {
+  const value = firstObj(base.value) || {};
+  const min = numOr(value.minValue);
+  const max = numOr(value.maxValue);
+  const currency = str(base.currency);
+  const unit = (str(base.unitText) || "").toLowerCase();
+  const suffix = unit === "hour" ? "/hr" : unit === "year" ? "/yr" : unit === "month" ? "/mo" : "";
+  if (min == null && max == null) return null;
+  const fmt = (n: number | null) => {
+    if (n == null) return null;
+    return currency ? `${currency} ${Math.round(n)}` : String(Math.round(n));
+  };
+  const lo = fmt(min);
+  const hi = fmt(max);
+  const label = lo && hi ? `${lo}–${hi}` : lo || hi || "";
+  return label ? `${label}${suffix}` : null;
+}
+
+export function parseIndeedJobJsonLd(html: string): {
+  title?: string;
+  company?: string;
+  salary?: string;
+  jobType?: string;
+  location?: string;
+  image?: string;
+  datePosted?: string;
+} | null {
+  const blocks = html.match(/<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi) || [];
+  for (const block of blocks) {
+    const inner = block.replace(/^<script[^>]*>/i, "").replace(/<\/script>$/i, "");
+    let data: unknown;
+    try {
+      data = JSON.parse(inner);
+    } catch {
+      continue;
+    }
+    const node = findLdNode(data, ["JobPosting"]);
+    if (!node) continue;
+    const str = (v: unknown): string | null => {
+      const t = typeof v === "string" ? v : Array.isArray(v) && typeof v[0] === "string" ? v[0] : null;
+      return t ? cleanText(t) || null : null;
+    };
+    const locNode = firstObj(node.jobLocation) || {};
+    const city = str(digPath(locNode, ["address", "addressLocality"]));
+    const region = str(digPath(locNode, ["address", "addressRegion"]));
+    const img = typeof node.image === "string" ? node.image : Array.isArray(node.image) ? String(node.image[0] ?? "") : null;
+    return {
+      title: str(node.title) || undefined,
+      company: str(digPath(node, ["hiringOrganization", "name"])) || undefined,
+      salary: jobSalaryLabel(firstObj(node.baseSalary) || {}, str) || undefined,
+      jobType: str(node.employmentType) || undefined,
+      location: [city, region].filter(Boolean).join(", ") || undefined,
+      image: img || undefined,
+      datePosted: str(node.datePosted) || undefined,
+    };
+  }
+  return null;
+}
+
+async function fetchIndeedPreview(url: string): Promise<LinkPreview | null> {
+  let html: string | null = null;
+  try {
+    const res = await fetch(url);
+    if (res.ok) {
+      const text = await res.text();
+      if (text && text.includes("<")) html = text;
+    }
+  } catch {
+    return null;
+  }
+  if (!html) return null;
+  const og = parseOpenGraph(html, url);
+  const ld = parseIndeedJobJsonLd(html);
+  return {
+    ...og,
+    siteName: "Indeed",
+    isIndeed: true,
+    title: ld?.title || og.title,
+    author: ld?.company || og.author,
+    image: ld?.image || og.image,
+    salary: ld?.salary || null,
+    jobType: ld?.jobType || null,
+    jobLocation: ld?.location || null,
+    publishedAt: ld?.datePosted || og.publishedAt,
+  };
+}
+
+function indeedFallback(url: string): LinkPreview {
+  return { ...blankFallback(url, "Indeed"), isIndeed: true };
+}
+
+/* ---------------- Zomato / Swiggy (restaurant — OG + Restaurant JSON-LD) ---------------- */
+
+export function isZomatoUrl(url: string): boolean {
+  try {
+    return new URL(url.trim()).hostname.toLowerCase().includes("zomato.");
+  } catch {
+    return false;
+  }
+}
+
+export function isSwiggyUrl(url: string): boolean {
+  try {
+    return new URL(url.trim()).hostname.toLowerCase().includes("swiggy.");
+  } catch {
+    return false;
+  }
+}
+
+export function parseRestaurantJsonLd(html: string): {
+  name?: string;
+  image?: string;
+  cuisine?: string;
+  locality?: string;
+  rating?: number;
+  reviews?: number;
+  price?: string;
+} | null {
+  const blocks = html.match(/<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi) || [];
+  for (const block of blocks) {
+    const inner = block.replace(/^<script[^>]*>/i, "").replace(/<\/script>$/i, "");
+    let data: unknown;
+    try {
+      data = JSON.parse(inner);
+    } catch {
+      continue;
+    }
+    const node = findLdNode(data, ["Restaurant"]);
+    if (!node) continue;
+    const str = (v: unknown): string | null => {
+      if (typeof v === "string" && v.trim()) return cleanText(v);
+      if (Array.isArray(v)) return v.filter((x) => typeof x === "string").map((x) => cleanText(String(x))).join(", ") || null;
+      return null;
+    };
+    const agg = firstObj(node.aggregateRating) || {};
+    const img = typeof node.image === "string" ? node.image : Array.isArray(node.image) ? String(node.image[0] ?? "") : null;
+    const priceRaw = str(node.priceRange);
+    return {
+      name: str(node.name) || undefined,
+      image: img || undefined,
+      cuisine: str(node.servesCuisine) || undefined,
+      locality: str(digPath(node, ["address", "addressLocality"])) || undefined,
+      rating: numOr(agg.ratingValue) ?? undefined,
+      reviews: numOr(agg.reviewCount) ?? undefined,
+      price: priceRaw ? `₹${priceRaw.replace(/[^\d.,]/g, "")}` : undefined,
+    };
+  }
+  return null;
+}
+
+/** "North Indian, Chinese • ₹600 for two" → { cuisine, price }. */
+function parseZomatoDescription(desc: string): { cuisine: string | null; price: string | null } {
+  const d = cleanText(desc);
+  const priceMatch = d.match(/₹\s*([\d,]+)/i);
+  const cuisine = d.split("•")[0]?.replace(/₹.*$/, "").trim() || null;
+  return {
+    cuisine: cuisine || null,
+    price: priceMatch ? `₹${priceMatch[1].replace(/,/g, "")}` : null,
+  };
+}
+
+async function fetchRestaurantPreview(url: string, brand: "Zomato" | "Swiggy"): Promise<LinkPreview | null> {
+  let html: string | null = null;
+  try {
+    const res = await fetch(url);
+    if (res.ok) {
+      const text = await res.text();
+      if (text && text.includes("<")) html = text;
+    }
+  } catch {
+    // fall through to the proxy
+  }
+
+  if (html) {
+    const og = parseOpenGraph(html, url);
+    const base = { ...og, siteName: brand, isZomato: brand === "Zomato", isSwiggy: brand === "Swiggy" };
+    const ld = parseRestaurantJsonLd(html);
+    if (ld) {
+      return {
+        ...base,
+        cuisine: ld.cuisine || base.cuisine,
+        area: ld.locality || base.area,
+        commercePrice: ld.price || base.commercePrice,
+        commerceRating: ld.rating ?? base.commerceRating,
+        commerceReviews: ld.reviews ?? base.commerceReviews,
+      };
+    }
+    const z = brand === "Zomato" ? parseZomatoDescription(base.description || "") : { cuisine: null, price: null };
+    const etaMatch =
+      html.match(/[^\d](\d{1,2})\s*[–-]\s*(\d{1,2})\s*min/i) ||
+      html.match(/[^\d](\d{1,2})\s*mins?\b/i);
+    return {
+      ...base,
+      cuisine: z.cuisine || base.cuisine,
+      commercePrice: z.price || base.commercePrice,
+      eta: etaMatch ? `${etaMatch[1]}${etaMatch[2] ? `–${etaMatch[2]}` : ""} min` : null,
+    };
+  }
+
+  try {
+    const res = await fetch(`https://r.jina.ai/${url}`);
+    if (!res.ok) return null;
+    const md = await res.text();
+    if (!md || !md.trim()) return null;
+    const parsed = parseMarkdown(md, url);
+    const lines = md.split("\n").map((l) => cleanText(l)).filter(Boolean);
+    const etaLine = lines.find((l) => /\bmin\b|minutes|delivery time/i.test(l)) || null;
+    const eta = etaLine?.match(/(\d{1,2})\s*[–-]\s*(\d{1,2})\s*min/i)?.[0] ?? null;
+    const areaLine = lines.find((l) => l.includes("→") && /(Road|Colony|Nagar|Main|Marg|Park|Bazaar|Complex|Building|Street|Lane)/i.test(l)) || null;
+    return {
+      ...parsed,
+      siteName: brand,
+      isZomato: brand === "Zomato",
+      isSwiggy: brand === "Swiggy",
+      eta: eta || null,
+      area: areaLine ? areaLine.replace(/\s*→.*$/, "").trim() : null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function restaurantFallback(url: string, brand: "Zomato" | "Swiggy"): LinkPreview {
+  return {
+    ...blankFallback(url, brand),
+    isZomato: brand === "Zomato",
+    isSwiggy: brand === "Swiggy",
+  };
+}
+
+/* ---------------- Pinterest (pin — OG) ---------------- */
+
+export function isPinterestUrl(url: string): boolean {
+  try {
+    const host = new URL(url.trim()).hostname.toLowerCase();
+    return host === "pinterest.com" || host.endsWith(".pinterest.com") || host.endsWith(".pin.it");
+  } catch {
+    return false;
+  }
+}
+
+async function fetchPinterestPreview(url: string): Promise<LinkPreview | null> {
+  const og = await fetchOgWithFallback(url, "Pinterest");
+  if (!og) return null;
+  return { ...og, siteName: og.siteName || "Pinterest", isPinterest: true };
+}
+
+function pinterestFallback(url: string): LinkPreview {
+  return { ...blankFallback(url, "Pinterest"), isPinterest: true };
+}
+
+/* ---------------- App Store / Play Store (app — iTunes lookup keyless) ---------------- */
+
+export function appPlatformFromUrl(url: string): "ios" | "android" | null {
+  try {
+    const host = new URL(url.trim()).hostname.toLowerCase();
+    if (host === "apps.apple.com" || host === "itunes.apple.com") return "ios";
+    if (host === "play.google.com" || host === "play.x.google.com") return "android";
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+export function isAppUrl(url: string): boolean {
+  return appPlatformFromUrl(url) != null;
+}
+
+/** Parse the numeric id from an App Store URL (`/app/<name>/id1234` or `?id=…`). */
+export function parseAppStoreId(input: string): string | null {
+  try {
+    const u = new URL(input.trim());
+    if (!u.hostname.toLowerCase().includes("apple.com")) return null;
+    const m = u.pathname.match(/id(\d{6,12})/) || u.search.match(/[?&]id=(\d{6,12})/);
+    return m ? m[1] : null;
+  } catch {
+    return null;
+  }
+}
+
+async function fetchItunesApp(id: string): Promise<LinkPreview | null> {
+  try {
+    const res = await fetch(`https://itunes.apple.com/lookup?id=${encodeURIComponent(id)}`);
+    if (!res.ok) return null;
+    const json = (await res.json()) as { results?: Record<string, unknown>[] };
+    const a = json.results?.[0];
+    if (!a) return null;
+    const str = (v: unknown): string | null => (typeof v === "string" && v.trim() ? v.trim() : null);
+    const name = str(a.trackName) || "";
+    const artwork = str(a.artworkUrl512 || a.artworkUrl600 || a.artworkUrl100 || a.artworkUrl60);
+    const updated = str(a.currentVersionReleaseDate);
+    return {
+      ...blankFallback(`https://apps.apple.com/app/id${id}`, "App Store"),
+      title: name || `App ${id}`,
+      description: str(a.description) || "",
+      image: artwork,
+      isApp: true,
+      appPlatform: "ios",
+      author: str(a.sellerName) || null,
+      category: str(a.primaryGenreName) || null,
+      downloads: updated ? `Updated ${new Date(updated).getUTCFullYear()}` : null,
+      commercePrice: typeof a.formattedPrice === "string" && !/free/i.test(a.formattedPrice) ? str(a.formattedPrice) : null,
+      commerceRating: numOr(a.averageUserRating),
+      commerceReviews: numOr(a.userRatingCount),
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function fetchPlayApp(url: string): Promise<LinkPreview | null> {
+  let html: string | null = null;
+  try {
+    const res = await fetch(url);
+    if (res.ok) {
+      const text = await res.text();
+      if (text && text.includes("<")) html = text;
+    }
+  } catch {
+    // fall through
+  }
+  if (html) {
+    const og = parseOpenGraph(html, url);
+    const downloads =
+      html.match(/<div[^>]+role=["']img["'][^>]+aria-label=["']([\d,.]+[KMB]?\+?)\s*Downloads/i)?.[1] ||
+      html.match(/\b([\d,.]+[KMB]?\+?)\s*Downloads/i)?.[1] ||
+      html.match(/interactionCount["']?\s*[:=]\s*["']?UserDownloads:(\d+)/i)?.[1] ||
+      null;
+    const ratingMatch = html.match(/aria-label=["']Rated ([\d.]+) stars/i)?.[1] || html.match(/itemprop=["']ratingValue["'][^>]*content=["']([\d.]+)["']/i)?.[1];
+    const countMatch = html.match(/itemprop=["']ratingCount["'][^>]*content=["'](\d+)["']/i)?.[1];
+    return {
+      ...og,
+      siteName: "Google Play",
+      isApp: true,
+      appPlatform: "android",
+      downloads,
+      commerceRating: ratingMatch ? parseFloat(ratingMatch) || null : null,
+      commerceReviews: countMatch ? parseInt(countMatch, 10) || null : null,
+    };
+  }
+  try {
+    const res = await fetch(`https://r.jina.ai/${url}`);
+    if (!res.ok) return null;
+    const md = await res.text();
+    if (!md || !md.trim()) return null;
+    const downloads = md.match(/([\d,.]+[KMB]?\+?)\s*Downloads/i)?.[1] || null;
+    return { ...parseMarkdown(md, url), siteName: "Google Play", isApp: true, appPlatform: "android", downloads };
+  } catch {
+    return null;
+  }
+}
+
+async function fetchAppPreview(url: string): Promise<LinkPreview | null> {
+  const platform = appPlatformFromUrl(url);
+  if (!platform) return null;
+  if (platform === "ios") {
+    const id = parseAppStoreId(url);
+    if (id) {
+      const itunes = await fetchItunesApp(id);
+      if (itunes) return itunes;
+    }
+    return fetchOgWithFallback(url, "App Store");
+  }
+  return fetchPlayApp(url);
+}
+
+function appFallback(url: string, platform: "ios" | "android"): LinkPreview {
+  return {
+    ...blankFallback(url, platform === "ios" ? "App Store" : "Google Play"),
+    isApp: true,
+    appPlatform: platform,
+  };
+}
+
+/* ---------------- Airbnb / stay (listing — OG + markdown) ---------------- */
+
+export function isStayUrl(url: string): boolean {
+  try {
+    const host = new URL(url.trim()).hostname.toLowerCase();
+    return host.includes("airbnb.") || host === "booking.com" || host.endsWith(".booking.com");
+  } catch {
+    return false;
+  }
+}
+
+async function fetchStayPreview(url: string): Promise<LinkPreview | null> {
+  const base = await fetchOgWithFallback(url, "Airbnb");
+  if (!base) return null;
+  let hostName: string | null = null;
+  try {
+    const res = await fetch(`https://r.jina.ai/${url}`);
+    if (res.ok) {
+      const md = await res.text();
+      const line = md.split("\n").find((l) => /hosted by/i.test(l)) || null;
+      const m = line?.match(/Hosted by\s+([A-Za-z][A-Za-z\s'.,-]{0,40})/i);
+      if (m) hostName = cleanText(m[1]) || null;
+    }
+  } catch {
+    // best-effort only
+  }
+  return { ...base, isStay: true, hostName };
+}
+
+function stayFallback(url: string): LinkPreview {
+  return { ...blankFallback(url, "Airbnb"), isStay: true };
+}
+
+/* ---------------- Steam (game — keyless storefront API) ---------------- */
+
+export function isGameUrl(url: string): boolean {
+  try {
+    const host = new URL(url.trim()).hostname.toLowerCase();
+    return host.includes("store.steampowered.com") || host.includes("steamcommunity.com");
+  } catch {
+    return false;
+  }
+}
+
+export function parseSteamAppId(input: string): string | null {
+  try {
+    const u = new URL(input.trim());
+    const m = u.pathname.match(/\/app\/(\d{1,10})\/?/);
+    return m ? m[1] : null;
+  } catch {
+    return null;
+  }
+}
+
+async function fetchGamePreview(url: string): Promise<LinkPreview | null> {
+  const appId = parseSteamAppId(url);
+  if (appId) {
+    try {
+      const res = await fetch(`https://store.steampowered.com/api/appdetails?appids=${encodeURIComponent(appId)}`);
+      if (!res.ok) throw new Error();
+      const json = (await res.json()) as Record<string, { success?: boolean; data?: Record<string, unknown> }>;
+      const data = json[appId]?.data;
+      if (json[appId]?.success && data) {
+        const genres = (data.genres as { description?: string }[] | undefined)?.map((g) => g.description).filter(Boolean).join(", ") || null;
+        const screens = data.screenshots as { path_full?: string }[] | undefined;
+        const release = data.release_date as { date?: string } | undefined;
+        const price = data.price_overview as { final?: number; final_formatted?: string; currency?: string } | undefined;
+        let priceLabel: string | null = null;
+        if (price && price.final !== 0) {
+          priceLabel =
+            typeof price.final_formatted === "string"
+              ? price.final_formatted
+              : formatSteamPrice(price.final ?? 0, typeof price.currency === "string" ? price.currency : "");
+        }
+        return {
+          ...blankFallback(`https://store.steampowered.com/app/${appId}`, "Steam"),
+          title: typeof data.name === "string" ? data.name : "Steam game",
+          description: typeof data.short_description === "string" ? cleanText(data.short_description) : "",
+          image: screens?.[0]?.path_full || (typeof data.header_image === "string" ? data.header_image : null),
+          isGame: true,
+          genre: genres,
+          releaseDate: release?.date || null,
+          commerceRating: numOr((data.metacritic as { score?: unknown } | undefined)?.score),
+          commercePrice: priceLabel,
+        };
+      }
+    } catch {
+      // fall through to OG
+    }
+  }
+  const og = await fetchOgWithFallback(url, "Steam");
+  if (!og) return null;
+  return { ...og, isGame: true };
+}
+
+function formatSteamPrice(cents: number, currency: string): string | null {
+  if (cents === 0) return null;
+  const sym = CURRENCY_SYMBOLS[currency] || `${currency} `;
+  const value = (cents / 100).toLocaleString("en-US", { minimumFractionDigits: cents % 100 === 0 ? 0 : 2, maximumFractionDigits: 2 });
+  return `${sym}${value}`;
+}
+
+function gameFallback(url: string): LinkPreview {
+  return { ...blankFallback(url, "Steam"), isGame: true };
+}
+
+/* ---------------- Book (Goodreads Book JSON-LD / Open Library / Google Books) ---------------- */
+
+export function isBookUrl(url: string): boolean {
+  try {
+    const host = new URL(url.trim()).hostname.toLowerCase();
+    return host.includes("goodreads.") || host === "books.google.com" || host.includes("openlibrary.org");
+  } catch {
+    return false;
+  }
+}
+
+export function parseGoodreadsJsonLd(html: string): {
+  title?: string;
+  author?: string;
+  image?: string;
+  pages?: number;
+  rating?: number;
+  reviews?: number;
+} | null {
+  const blocks = html.match(/<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi) || [];
+  for (const block of blocks) {
+    const inner = block.replace(/^<script[^>]*>/i, "").replace(/<\/script>$/i, "");
+    let data: unknown;
+    try {
+      data = JSON.parse(inner);
+    } catch {
+      continue;
+    }
+    const node = findLdNode(data, ["Book"]);
+    if (!node) continue;
+    const authorNode = firstObj(node.author) || {};
+    const author = typeof authorNode.name === "string" ? cleanText(authorNode.name) : null;
+    const agg = firstObj(node.aggregateRating) || {};
+    const img = typeof node.image === "string" ? node.image : Array.isArray(node.image) ? String(node.image[0] ?? "") : null;
+    return {
+      title: typeof node.name === "string" ? cleanText(node.name) : undefined,
+      author: author || undefined,
+      image: img || undefined,
+      pages: numOr(node.numberOfPages) ?? undefined,
+      rating: numOr(agg.ratingValue) ?? undefined,
+      reviews: numOr(agg.reviewCount) ?? undefined,
+    };
+  }
+  return null;
+}
+
+async function fetchBookPreview(url: string): Promise<LinkPreview | null> {
+  const og = await fetchOgWithFallback(url, "Goodreads");
+  if (!og) return null;
+  let ld: ReturnType<typeof parseGoodreadsJsonLd> = null;
+  let html: string | null = null;
+  try {
+    const res = await fetch(url);
+    if (res.ok) {
+      const text = await res.text();
+      if (text && text.includes("<")) html = text;
+    }
+  } catch {
+    // no structured data — best-effort is fine
+  }
+  if (html) ld = parseGoodreadsJsonLd(html);
+  return {
+    ...og,
+    siteName: og.siteName || "Goodreads",
+    isBook: true,
+    author: ld?.author || og.author,
+    pages: ld?.pages ?? null,
+    commerceRating: ld?.rating ?? null,
+    commerceReviews: ld?.reviews ?? null,
+  };
+}
+
+function bookFallback(url: string): LinkPreview {
+  return { ...blankFallback(url, "Goodreads"), isBook: true };
+}
+
+/* ---------------- Amazon Kindle / books — the generic Amazon commerce
+       pipeline below still handles physical products. ---------------- */
+
+/** Amazon `amazon.*` URLs that may be a book: Kindle store or product paths. */
+export function isAmazonBookUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url.trim());
+    const host = parsed.hostname.toLowerCase();
+    if (!host.includes("amazon.")) return false;
+    return /(^|\/)(kindle\/|dp\/|gp\/product\/)/i.test(parsed.pathname);
+  } catch {
+    return false;
+  }
+}
+
+/** Parse an Amazon book page's `Book` JSON-LD block (title/author/pages/rating). */
+export function parseAmazonBookJsonLd(html: string): {
+  title?: string;
+  author?: string;
+  image?: string;
+  pages?: number;
+  rating?: number;
+  reviews?: number;
+} | null {
+  const blocks = html.match(/<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi) || [];
+  for (const block of blocks) {
+    const inner = block.replace(/^<script[^>]*>/i, "").replace(/<\/script>$/i, "");
+    let data: unknown;
+    try {
+      data = JSON.parse(inner);
+    } catch {
+      continue;
+    }
+    const node = findLdNode(data, ["Book"]);
+    if (!node) continue;
+    const authorField = node.author;
+    const author = typeof authorField === "string"
+      ? cleanText(authorField)
+      : firstObj(authorField)?.name
+        ? String(firstObj(authorField)?.name)
+        : null;
+    const agg = firstObj(node.aggregateRating) || {};
+    const img = typeof node.image === "string" ? node.image : Array.isArray(node.image) ? String(node.image[0] ?? "") : null;
+    return {
+      title: typeof node.name === "string" ? cleanText(node.name) : undefined,
+      author: author || undefined,
+      image: img || undefined,
+      pages: numOr(node.numberOfPages) ?? undefined,
+      rating: numOr(agg.ratingValue) ?? undefined,
+      reviews: numOr(agg.reviewCount) ?? undefined,
+    };
+  }
+  return null;
+}
+
+/**
+ * Fetch a Kindle/Amazon book page. Returns a `book` preview only when the
+ * page confirms it is a book (Book JSON-LD or an explicit `/kindle/` path);
+ * otherwise returns `null` so the URL falls through to the Amazon commerce
+ * pipeline.
+ */
+async function fetchKindlePreview(url: string): Promise<LinkPreview | null> {
+  const isKindlePath = /(^|\/)(kindle\/)/i.test(new URL(url).pathname);
+  let html: string | null = null;
+  try {
+    const res = await fetch(url);
+    if (res.ok) {
+      const text = await res.text();
+      if (text && text.includes("<")) html = text;
+    }
+  } catch {
+    // fall through
+  }
+  const ld = html ? parseAmazonBookJsonLd(html) : null;
+  if (!ld && !isKindlePath) return null;
+
+  const og = await fetchOgWithFallback(url, "Amazon");
+  const base = og || { ...blankFallback(url, "Amazon"), isBook: true };
+  return {
+    ...base,
+    siteName: base.siteName || "Amazon",
+    isBook: true,
+    author: ld?.author || base.author,
+    pages: ld?.pages ?? null,
+    commerceRating: ld?.rating ?? null,
+    commerceReviews: ld?.reviews ?? null,
+  };
+}
+
+/* ---------------- Product Hunt (launch — OG; upvotes manual) ---------------- */
+
+export function isLaunchUrl(url: string): boolean {
+  try {
+    const host = new URL(url.trim()).hostname.toLowerCase();
+    return host === "producthunt.com" || host.endsWith(".producthunt.com");
+  } catch {
+    return false;
+  }
+}
+
+async function fetchLaunchPreview(url: string): Promise<LinkPreview | null> {
+  const og = await fetchOgWithFallback(url, "Product Hunt");
+  if (!og) return null;
+  return { ...og, siteName: "Product Hunt", isLaunch: true };
+}
+
+function launchFallback(url: string): LinkPreview {
+  return { ...blankFallback(url, "Product Hunt"), isLaunch: true };
+}
+
 /** 65 → "1:05", 3665 → "1:01:05". */
 export function formatDuration(totalSec: number): string {
   const s = Math.max(0, Math.floor(totalSec));
@@ -1261,8 +2177,6 @@ export function formatCompact(n: number): string {
 function trimCompact(n: number): string {
   return String(Math.round(n * 10) / 10).replace(/\.0$/, "");
 }
-
-import { getWorkerBaseUrl, getYouTubeWorkerUrl } from "@/lib/config";
 
 function normalizeUrl(input: string): string | null {
   let url = input.trim();
@@ -1337,15 +2251,83 @@ export async function fetchLinkPreview(input: string): Promise<LinkPreview> {
     return githubFallback(url);
   }
 
+  if (isLinkedInUrl(url)) {
+    const li = await fetchLinkedInPreview(url);
+    if (li) return li;
+    // Without a readable source the template still auto-selects.
+    return linkedInFallback(url);
+  }
+
+  if (isIndeedUrl(url)) {
+    const jd = await fetchIndeedPreview(url);
+    if (jd) return jd;
+    return indeedFallback(url);
+  }
+
+  if (isZomatoUrl(url)) {
+    const rz = await fetchRestaurantPreview(url, "Zomato");
+    if (rz) return rz;
+    return restaurantFallback(url, "Zomato");
+  }
+
+  if (isSwiggyUrl(url)) {
+    const rs = await fetchRestaurantPreview(url, "Swiggy");
+    if (rs) return rs;
+    return restaurantFallback(url, "Swiggy");
+  }
+
+  if (isPinterestUrl(url)) {
+    const pn = await fetchPinterestPreview(url);
+    if (pn) return pn;
+    return pinterestFallback(url);
+  }
+
+  if (isAppUrl(url)) {
+    const ap = await fetchAppPreview(url);
+    if (ap) return ap;
+    return appFallback(url, appPlatformFromUrl(url) ?? "ios");
+  }
+
+  if (isStayUrl(url)) {
+    const st = await fetchStayPreview(url);
+    if (st) return st;
+    return stayFallback(url);
+  }
+
+  if (isGameUrl(url)) {
+    const gm = await fetchGamePreview(url);
+    if (gm) return gm;
+    return gameFallback(url);
+  }
+
+  if (isBookUrl(url)) {
+    const bk = await fetchBookPreview(url);
+    if (bk) return bk;
+    return bookFallback(url);
+  }
+
+  if (isAmazonBookUrl(url)) {
+    const kd = await fetchKindlePreview(url);
+    if (kd) return kd;
+    // Not a book (or the page was blocked) — fall through to the Amazon
+    // commerce parse so gadgets stay on the commerce template.
+  }
+
+  if (isLaunchUrl(url)) {
+    const lc = await fetchLaunchPreview(url);
+    if (lc) return lc;
+    return launchFallback(url);
+  }
+
   if (isEbayUrl(url)) {
     const eb = await fetchEbayPreview(url);
     if (eb) return eb;
     // fall through to the generic chain; withCommerce() still flags it
   }
 
-  // Amazon / Flipkart / Meesho: best-effort PDP parse, else generic + manual.
+  // Amazon / Flipkart / Meesho / AliExpress: best-effort PDP parse, else generic + manual.
   const store = commerceStoreFromUrl(url);
-  if (store === "amazon" || store === "flipkart" || store === "meesho") {
+  if (store === "amazon" || store === "flipkart" || store === "meesho" || store === "aliexpress") {
     const mp = await fetchMarketplacePreview(url, store);
     if (mp) return mp;
     // fall through to the generic chain; withCommerce() still flags it

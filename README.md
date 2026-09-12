@@ -1,56 +1,87 @@
-# Welcome to your Expo app 👋
+# LinkSnap
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+Turn any link into a polished, story-ready card. Paste a URL into LinkSnap and it instantly detects the platform, parses the metadata, and renders a shareable card sized for Instagram / WhatsApp / Facebook stories. Every card is fully customizable before you share it.
 
-## Get started
+Built with Expo (React Native), `expo-router`, and NativeWind.
 
-1. Install dependencies
+## Features
 
-   ```bash
-   npm install
-   ```
+- **Automatic link detection** — paste any URL and LinkSnap picks the right template, populating title, image, author, price, rating, and other platform-specific details from public metadata, oEmbed, JSON-LD, and keyless APIs.
+- **20 story templates** — editorial, spotlight, tweet, YouTube, clip, reddit post, music, repo, commerce, stream, LinkedIn, Indeed, restaurant, Pinterest, app, stay, game, book, and launch cards.
+- **Full editor**:
+  - Switch templates and pick a scene background (image, solid color, eyedropper, or custom HSV color).
+  - Edit card details — author, headline, price, cuisine, ratings, and more — per template.
+  - Blur and vignette controls for the background.
+- **Share targets** — send the rendered card to Instagram, WhatsApp, Facebook, or the system share sheet (a photo is cached automatically on device).
 
-2. Start the app
+## Supported link types
 
-   ```bash
-   npx expo start
-   ```
+Paste any of these links and the app auto-selects the matching template (every template is also reachable from the Presets panel and fully editable):
 
-In the output, you'll find options to open the app in a
+- **Social**: X/Twitter posts, Reddit posts, Pinterest pins
+- **Video**: YouTube (video / Short / Live / Premiere), Twitch (live / clip / VOD / channel), TikTok clips
+- **Music**: Spotify (track / album / playlist / artist / show / episode)
+- **Code**: GitHub repositories
+- **Commerce**: Amazon, Flipkart, Meesho, AliExpress, eBay, Etsy
+- **Jobs**: LinkedIn posts, Indeed listings
+- **Food**: Zomato & Swiggy restaurant pages
+- **Apps**: App Store & Google Play listings
+- **Travel**: Airbnb and similar stay listings
+- **Games**: Steam store pages
+- **Books**: Goodreads, Google Books, Open Library, and Amazon Kindle / book pages (`/dp/`, `/gp/product/`, `/kindle/` — physical Amazon products stay on the commerce template)
+- **Launch**: Product Hunt launches
+- Everything else falls back to a generic editorial card.
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+Metadata is fetched without server code: direct fetch plus an `r.jina.ai` reader proxy fallback, with keyless public APIs for App Store (iTunes Lookup) and Steam, and JSON-LD parsing for eBay, Indeed, restaurants, and Goodreads.
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+## Tech stack
 
-## Get a fresh project
+- Expo SDK 57, React Native 0.86, React 19
+- `expo-router` (file-based routing, typed routes)
+- NativeWind + Tailwind CSS for styling
+- `lucide-react-native` icons
+- `react-native-view-shot` for rendering shareable images
 
-When you're ready, run:
+## Getting started
+
+Prerequisites: Node.js 20+ and the Expo CLI.
 
 ```bash
-npm run reset-project
+npm install
+npx expo start
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+In the Metro output you can open the app in a development build, an emulator/simulator, or Expo Go. `w` opens the web version in your browser.
 
-### Other setup steps
+Scripts:
 
-- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
+```bash
+npm run web        # start Expo for the web
+npm run android    # build + run on Android
+npm run ios        # build + run on iOS
+npm run lint       # ESLint via expo lint
+```
 
-## Learn more
+## Project structure
 
-To learn more about developing your project with Expo, look at the following resources:
+```
+src/app/            # expo-router screens (index = entry, result = card studio)
+src/components/     # shared UI, the card template library, skeletons
+src/lib/            # link preview parsing, sharing, history, palettes
+```
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+- `src/lib/link-preview.ts` — URL sniffing, HTML/OG/JSON-LD/oEmbed/API parsing, per-platform fallbacks, and the `LinkPreview` model.
+- `src/components/link-card-view.tsx` — the 20 card templates and the scene/background renderer.
+- `src/app/result.tsx` — the card studio: preview, editor panel, and share flow.
 
-## Join the community
+## Configuration
 
-Join our community of developers creating universal apps.
+Optional values live in the `extra` section of `app.json`:
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+- `ytWorkerUrl` — a self-hosted worker URL that returns YouTube oEmbed/`related` metadata. Leave empty to parse page HTML instead.
+- `fbAppId` — Facebook App ID (used by the `react-native-share` install intent). Required only for Facebook sharing.
+
+## Notes
+
+- Card details entered in the editor are sent along with the shared caption.
+- Sharing requires device photo/library permissions; a preview photo is saved automatically on iOS before sharing.

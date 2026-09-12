@@ -7,7 +7,23 @@ import {
   type LayoutChangeEvent,
   type ViewProps,
 } from "react-native";
-import { ArrowBigUp, Check, GitFork, Heart, MapPin, MessageCircle, Music, Play, Star } from "lucide-react-native";
+import {
+  ArrowBigUp,
+  BookOpen,
+  Building2,
+  Check,
+  Clock,
+  Download,
+  GitFork,
+  Heart,
+  MapPin,
+  MessageCircle,
+  Music,
+  Play,
+  Repeat2,
+  Star,
+  ThumbsUp,
+} from "lucide-react-native";
 import Svg, { Defs, RadialGradient, Rect, Stop } from "react-native-svg";
 import { domainFromUrl, getPalette, type Palette } from "@/lib/palette";
 import { useImageSize } from "@/lib/use-image-size";
@@ -24,7 +40,7 @@ import {
   type YouTubeKind,
 } from "@/lib/link-preview";
 
-export type CardTheme = "editorial" | "spotlight" | "tweet" | "youtube" | "clip" | "post" | "music" | "repo" | "commerce" | "stream";
+export type CardTheme = "editorial" | "spotlight" | "tweet" | "youtube" | "clip" | "post" | "music" | "repo" | "commerce" | "stream" | "linkedin" | "indeed" | "zomato" | "swiggy" | "pinterest" | "app" | "stay" | "game" | "book" | "launch";
 export type AspectRatio = "story" | "square";
 export type CardBackgroundMode = "image" | "color";
 
@@ -75,6 +91,28 @@ export type LinkCardViewProps = ViewProps & {
   mrp?: string;
   rating?: string;
   seller?: string;
+  /** LinkedIn post extras. */
+  headline?: string;
+  reposts?: string;
+  /** Indeed job extras (salary/location/manual). */
+  salary?: string;
+  jobType?: string;
+  /** Restaurant extras (Zomato/Swiggy). */
+  cuisine?: string;
+  eta?: string;
+  /** App Store / Play Store extras. */
+  category?: string;
+  downloads?: string;
+  /** Airbnb / stay listing extras. */
+  host?: string;
+  /** Steam game extras. */
+  genre?: string;
+  releaseDate?: string;
+  /** Book extras. */
+  pages?: string;
+  /** Product Hunt launch extras. */
+  tagline?: string;
+  upvotes?: string;
 };
 
 /** Floating card width relative to the scene canvas. Height is content-driven. */
@@ -98,6 +136,16 @@ const CARD_META: Record<CardTheme, { surface: string; radius: number; border: st
   repo: { surface: "#0D1117", radius: 18, border: "rgba(255, 255, 255, 0.15)" },
   commerce: { surface: "#FFFFFF", radius: 18, border: "rgba(0, 0, 0, 0.08)" },
   stream: { surface: "#0E0A13", radius: 20, border: "rgba(255, 255, 255, 0.15)" },
+  linkedin: { surface: "#FFFFFF", radius: 18, border: "rgba(0, 0, 0, 0.08)" },
+  indeed: { surface: "#FFFFFF", radius: 18, border: "rgba(0, 0, 0, 0.08)" },
+  zomato: { surface: "#FFFFFF", radius: 18, border: "rgba(0, 0, 0, 0.08)" },
+  swiggy: { surface: "#FFFFFF", radius: 18, border: "rgba(0, 0, 0, 0.08)" },
+  pinterest: { surface: "#FFFFFF", radius: 18, border: "rgba(0, 0, 0, 0.08)" },
+  app: { surface: "#FFFFFF", radius: 18, border: "rgba(0, 0, 0, 0.08)" },
+  stay: { surface: "#FFFFFF", radius: 18, border: "rgba(0, 0, 0, 0.08)" },
+  game: { surface: "#1B2838", radius: 18, border: "rgba(255, 255, 255, 0.15)" },
+  book: { surface: "#F4F1EA", radius: 18, border: "rgba(0, 0, 0, 0.08)" },
+  launch: { surface: "#FFFFFF", radius: 18, border: "rgba(0, 0, 0, 0.08)" },
 };
 
 /**
@@ -376,6 +424,19 @@ const STORE_DESIGN: Record<CommerceStore, StoreDesign> = {
     ratingCountColor: "#595959",
     sellerPrefix: "Shop:",
   },
+  aliexpress: {
+    label: "AliExpress",
+    color: "#E61110",
+    wordmarkStyle: { fontWeight: "800", letterSpacing: 0.2 },
+    priceColor: "#D7230C",
+    dealBackground: "#FDECE9",
+    dealColor: "#E53238",
+    ratingStyle: "stars",
+    ratingColor: "#FFA41C",
+    ratingTextColor: "#333333",
+    ratingCountColor: "#757575",
+    sellerPrefix: "Seller:",
+  },
   other: {
     label: "Shop",
     color: "#111111",
@@ -462,6 +523,20 @@ const LinkCardView = forwardRef<View, LinkCardViewProps>(function LinkCardView(
     mrp,
     rating,
     seller,
+    headline,
+    reposts,
+    salary,
+    jobType,
+    cuisine,
+    eta,
+    category,
+    downloads,
+    host,
+    genre,
+    releaseDate,
+    pages,
+    tagline,
+    upvotes,
     style,
     ...rest
   },
@@ -521,6 +596,37 @@ const LinkCardView = forwardRef<View, LinkCardViewProps>(function LinkCardView(
   const cReviews = preview?.commerceReviews ?? null;
   const cSeller = (seller || "").trim() || preview?.commerceSeller || null;
 
+  // LinkedIn resolution
+  const liHeadline = (headline || "").trim() || preview?.headline || null;
+  const liReposts = countOf(reposts, preview?.repostCount);
+
+  // Indeed resolution
+  const inSalary = (salary || "").trim() || preview?.salary || null;
+  const inJobType = (jobType || "").trim() || preview?.jobType || null;
+  const inLocation = (location || "").trim() || preview?.jobLocation || null;
+
+  // Restaurant resolution
+  const reCuisine = (cuisine || "").trim() || preview?.cuisine || null;
+  const reEta = (eta || "").trim() || preview?.eta || null;
+
+  // App resolution
+  const apCategory = (category || "").trim() || preview?.category || null;
+  const apDownloads = (downloads || "").trim() || preview?.downloads || null;
+
+  // Stay resolution
+  const syHost = (host || "").trim() || preview?.hostName || null;
+
+  // Game resolution
+  const gmGenre = (genre || "").trim() || preview?.genre || null;
+  const gmRelease = (releaseDate || "").trim() || preview?.releaseDate || null;
+
+  // Book resolution
+  const bkPages = pages ? parseInt(pages.replace(/\D/g, ""), 10) || null : preview?.pages ?? null;
+
+  // Launch resolution
+  const lcTagline = (tagline || "").trim() || preview?.description?.trim() || null;
+  const lcUpvotes = countOf(upvotes, preview?.upvotes);
+
   // Twitch resolution (Worker Helix first, manual override wins)
   const stKind: TwitchKind =
     streamKind || preview?.twitchKind || "channel";
@@ -544,6 +650,122 @@ const LinkCardView = forwardRef<View, LinkCardViewProps>(function LinkCardView(
           viewers={stViewers}
           durationSec={stDuration}
           age={timeAgo(preview?.publishedAt || null)}
+        />
+      );
+    }
+    if (theme === "linkedin") {
+      return (
+        <LinkedInCard
+          headline={liHeadline}
+          description={excerpt}
+          authorName={authorName}
+          timeLabel={dateLabel}
+          reposts={liReposts}
+          likes={likeCount}
+          avatar={avatar}
+        />
+      );
+    }
+    if (theme === "indeed") {
+      return (
+        <IndeedCard
+          title={title}
+          company={authorName}
+          location={inLocation}
+          salary={inSalary}
+          jobType={inJobType}
+          image={preview?.image || null}
+          posted={timeAgo(preview?.publishedAt || null)}
+        />
+      );
+    }
+    if (theme === "zomato" || theme === "swiggy") {
+      const brand = theme === "zomato" ? "zomato" : "swiggy";
+      return (
+        <RestaurantCard
+          brand={brand}
+          title={title}
+          image={preview?.image || null}
+          cuisine={reCuisine}
+          location={inLocation}
+          price={cPrice}
+          rating={cRating}
+          reviews={cReviews}
+          eta={reEta}
+        />
+      );
+    }
+    if (theme === "pinterest") {
+      return (
+        <PinterestCard
+          title={title}
+          description={excerpt}
+          image={preview?.image || null}
+          authorName={authorName}
+        />
+      );
+    }
+    if (theme === "app") {
+      return (
+        <AppCard
+          platform={preview?.appPlatform ?? null}
+          title={title}
+          description={excerpt}
+          image={preview?.image || null}
+          developer={authorName}
+          category={apCategory}
+          downloads={apDownloads}
+          price={cPrice}
+          rating={cRating}
+          reviews={cReviews}
+        />
+      );
+    }
+    if (theme === "stay") {
+      return (
+        <StayCard
+          title={title}
+          location={pill}
+          host={syHost}
+          price={cPrice}
+          rating={cRating}
+          reviews={cReviews}
+          image={preview?.image || null}
+        />
+      );
+    }
+    if (theme === "game") {
+      return (
+        <GameCard
+          title={title}
+          description={excerpt}
+          image={preview?.image || null}
+          genre={gmGenre}
+          releaseDate={gmRelease}
+          metacritic={cRating}
+          price={cPrice}
+        />
+      );
+    }
+    if (theme === "book") {
+      return (
+        <BookCard
+          title={title}
+          authorName={authorName}
+          pages={bkPages}
+          rating={cRating}
+          reviews={cReviews}
+          image={preview?.image || null}
+        />
+      );
+    }
+    if (theme === "launch") {
+      return (
+        <LaunchCard
+          title={title}
+          tagline={lcTagline}
+          maker={authorName}
+          upvotes={lcUpvotes}
         />
       );
     }
@@ -1172,6 +1394,605 @@ function CommerceCard({
           {meta.sellerPrefix} {seller}
         </Text>
       ) : null}
+    </View>
+  );
+}
+
+/* ---------------- Template K: LinkedIn post card ---------------- */
+
+function LinkedInCard({
+  headline,
+  description,
+  authorName,
+  timeLabel,
+  reposts,
+  likes,
+  avatar,
+}: {
+  headline: string | null;
+  description: string;
+  authorName: string;
+  timeLabel: string;
+  reposts: number | null;
+  likes: number | null;
+  avatar: string | null;
+}) {
+  const body = headline && headline !== description ? `${headline}\n${description}`.trim() : headline || description;
+  return (
+    <View style={styles.li}>
+      <View style={styles.liHeader}>
+        {avatar ? (
+          <Image source={{ uri: avatar }} style={styles.liAvatar} resizeMode="cover" />
+        ) : (
+          <View style={[styles.liAvatar, styles.liAvatarFallback]}>
+            <Text style={styles.liAvatarText}>{getInitials(authorName)}</Text>
+          </View>
+        )}
+        <View style={styles.liNames}>
+          <Text style={styles.liName} numberOfLines={1}>
+            {authorName}
+          </Text>
+          <Text style={styles.liMeta} numberOfLines={1}>
+            {timeLabel}
+          </Text>
+        </View>
+        <View style={styles.liBadge}>
+          <Text style={styles.liBadgeText}>in</Text>
+        </View>
+      </View>
+      <Text style={styles.liBody} numberOfLines={6}>
+        {body}
+      </Text>
+      {reposts != null || likes != null ? (
+        <View style={styles.liFooter}>
+          {reposts != null ? (
+            <View style={styles.liStat}>
+              <Repeat2 size={13} color="#0A66C2" strokeWidth={2} />
+              <Text style={styles.liStatText}>{formatCompact(reposts)}</Text>
+            </View>
+          ) : null}
+          {likes != null ? (
+            <View style={styles.liStat}>
+              <ThumbsUp size={13} color="#0A66C2" strokeWidth={2} />
+              <Text style={styles.liStatText}>{formatCompact(likes)}</Text>
+            </View>
+          ) : null}
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+/* ---------------- Template L: Indeed job card ---------------- */
+
+function IndeedCard({
+  title,
+  company,
+  location,
+  salary,
+  jobType,
+  image,
+  posted,
+}: {
+  title: string;
+  company: string;
+  location: string | null;
+  salary: string | null;
+  jobType: string | null;
+  image: string | null;
+  posted: string | null;
+}) {
+  return (
+    <View style={styles.in}>
+      <View style={styles.inProviderRow}>
+        <View style={styles.inDot} />
+        <Text style={styles.inProvider}>Indeed</Text>
+        {posted ? (
+          <Text style={styles.inPosted} numberOfLines={1}>
+            {posted}
+          </Text>
+        ) : null}
+      </View>
+      {image ? (
+        <View style={styles.inImageWrap}>
+          <Image source={{ uri: image }} style={styles.inImage} resizeMode="cover" />
+        </View>
+      ) : null}
+      <Text style={styles.inTitle} numberOfLines={2}>
+        {title}
+      </Text>
+      {company ? (
+        <View style={styles.inCompanyRow}>
+          <Building2 size={13} color="#8A8A8A" strokeWidth={2} />
+          <Text style={styles.inCompany} numberOfLines={1}>
+            {company}
+          </Text>
+        </View>
+      ) : null}
+      {location || jobType ? (
+        <View style={styles.inMetaRow}>
+          {location ? (
+            <View style={styles.inMetaItem}>
+              <MapPin size={12} color="#2557A7" strokeWidth={2} />
+              <Text style={styles.inMetaText} numberOfLines={1}>
+                {location}
+              </Text>
+            </View>
+          ) : null}
+          {jobType ? (
+            <View style={styles.inJobType}>
+              <Text style={styles.inJobTypeText} numberOfLines={1}>
+                {jobType}
+              </Text>
+            </View>
+          ) : null}
+        </View>
+      ) : null}
+      {salary ? (
+        <View style={styles.inSalaryRow}>
+          <Text style={styles.inSalary} numberOfLines={1}>
+            {salary}
+          </Text>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+/* ---------------- Template M: Zomato / Swiggy restaurant card ---------------- */
+
+const RESTAURANT_BRAND: Record<"zomato" | "swiggy", { label: string; color: string }> = {
+  zomato: { label: "Zomato", color: "#E23744" },
+  swiggy: { label: "Swiggy", color: "#FC8019" },
+};
+
+function RestaurantCard({
+  brand,
+  title,
+  image,
+  cuisine,
+  location,
+  price,
+  rating,
+  reviews,
+  eta,
+}: {
+  brand: "zomato" | "swiggy";
+  title: string;
+  image: string | null;
+  cuisine: string | null;
+  location: string | null;
+  price: string | null;
+  rating: number | null;
+  reviews: number | null;
+  eta: string | null;
+}) {
+  const meta = RESTAURANT_BRAND[brand];
+  return (
+    <View style={styles.re}>
+      <View style={styles.reProviderRow}>
+        <View style={[styles.reDot, { backgroundColor: meta.color }]} />
+        <Text style={styles.reProvider}>{meta.label}</Text>
+        {rating != null ? (
+          <View style={styles.reRatingRow}>
+            <Star size={11} color="#F59E0B" fill="#F59E0B" strokeWidth={1} />
+            <Text style={styles.reRatingText}>{rating.toFixed(1)}</Text>
+            {reviews != null ? (
+              <Text style={styles.reRatingCount} numberOfLines={1}>
+                ({formatCompact(reviews)})
+              </Text>
+            ) : null}
+          </View>
+        ) : null}
+      </View>
+      {image ? (
+        <View style={styles.reImageWrap}>
+          <Image source={{ uri: image }} style={styles.reImage} resizeMode="cover" />
+        </View>
+      ) : null}
+      <Text style={styles.reTitle} numberOfLines={1}>
+        {title}
+      </Text>
+      {cuisine ? (
+        <Text style={styles.reCuisine} numberOfLines={1}>
+          {cuisine}
+        </Text>
+      ) : null}
+      {location || eta ? (
+        <View style={styles.reMetaRow}>
+          {location ? (
+            <View style={styles.reMetaItem}>
+              <MapPin size={12} color={meta.color} strokeWidth={2} />
+              <Text style={styles.reMetaText} numberOfLines={1}>
+                {location}
+              </Text>
+            </View>
+          ) : null}
+          {eta ? (
+            <View style={styles.reMetaItem}>
+              <Clock size={12} color={meta.color} strokeWidth={2} />
+              <Text style={styles.reMetaText} numberOfLines={1}>
+                {eta}
+              </Text>
+            </View>
+          ) : null}
+        </View>
+      ) : null}
+      {price ? (
+        <Text style={[styles.rePrice, { color: meta.color }]} numberOfLines={1}>
+          {price}
+        </Text>
+      ) : null}
+    </View>
+  );
+}
+
+/* ---------------- Template N: Pinterest pin card ---------------- */
+
+function PinterestCard({
+  title,
+  description,
+  image,
+  authorName,
+}: {
+  title: string;
+  description: string;
+  image: string | null;
+  authorName: string;
+}) {
+  return (
+    <View style={styles.pi}>
+      <View style={styles.piProviderRow}>
+        <View style={styles.piDot} />
+        <Text style={styles.piProvider}>Pinterest</Text>
+      </View>
+      {image ? (
+        <View style={styles.piImageWrap}>
+          <Image source={{ uri: image }} style={styles.piImage} resizeMode="cover" />
+        </View>
+      ) : null}
+      <Text style={styles.piTitle} numberOfLines={2}>
+        {title}
+      </Text>
+      {description ? (
+        <Text style={styles.piDesc} numberOfLines={3}>
+          {description}
+        </Text>
+      ) : null}
+      <View style={styles.piFooter}>
+        <View style={styles.piAvatar}>
+          <Text style={styles.piAvatarText}>{getInitials(authorName).charAt(0)}</Text>
+        </View>
+        <Text style={styles.piAuthor} numberOfLines={1}>
+          {authorName}
+        </Text>
+      </View>
+    </View>
+  );
+}
+
+/* ---------------- Template O: App Store / Play Store app card ---------------- */
+
+function AppCard({
+  platform,
+  title,
+  description,
+  image,
+  developer,
+  category,
+  downloads,
+  price,
+  rating,
+  reviews,
+}: {
+  platform: "ios" | "android" | null;
+  title: string;
+  description: string;
+  image: string | null;
+  developer: string;
+  category: string | null;
+  downloads: string | null;
+  price: string | null;
+  rating: number | null;
+  reviews: number | null;
+}) {
+  return (
+    <View style={styles.ap}>
+      <View style={styles.apProviderRow}>
+        <View style={[styles.apDot, { backgroundColor: platform === "android" ? "#00D084" : "#0A60FE" }]} />
+        <Text style={styles.apProvider}>{platform === "android" ? "Google Play" : "App Store"}</Text>
+      </View>
+      <View style={styles.apRow}>
+        {image ? (
+          <Image source={{ uri: image }} style={styles.apIcon} resizeMode="cover" />
+        ) : (
+          <View style={[styles.apIcon, styles.apIconFallback]}>
+            <Text style={styles.apIconText}>{getInitials(title).charAt(0)}</Text>
+          </View>
+        )}
+        <View style={styles.apCol}>
+          <Text style={styles.apTitle} numberOfLines={2}>
+            {title}
+          </Text>
+          <Text style={styles.apDeveloper} numberOfLines={1}>
+            {developer}
+          </Text>
+          {downloads ? (
+            <View style={styles.apDownloadRow}>
+              <Download size={11} color="#555555" strokeWidth={2} />
+              <Text style={styles.apDownloadText} numberOfLines={1}>
+                {downloads}
+              </Text>
+            </View>
+          ) : null}
+        </View>
+      </View>
+      {category ? (
+        <View style={styles.apCategoryChip}>
+          <Text style={styles.apCategoryText} numberOfLines={1}>
+            {category}
+          </Text>
+        </View>
+      ) : null}
+      {description ? (
+        <Text style={styles.apDesc} numberOfLines={3}>
+          {description}
+        </Text>
+      ) : null}
+      {price || rating != null ? (
+        <View style={styles.apFooter}>
+          {price ? (
+            <Text style={styles.apPrice} numberOfLines={1}>
+              {price}
+            </Text>
+          ) : null}
+          {rating != null ? (
+            <View style={styles.apRatingRow}>
+              <Star size={11} color="#111111" fill="#111111" strokeWidth={1} />
+              <Text style={styles.apRatingText}>
+                {rating.toFixed(1)}
+                {reviews != null ? ` (${formatCompact(reviews)})` : ""}
+              </Text>
+            </View>
+          ) : null}
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+/* ---------------- Template P: Airbnb / stay listing card ---------------- */
+
+function StayCard({
+  title,
+  location,
+  host,
+  price,
+  rating,
+  reviews,
+  image,
+}: {
+  title: string;
+  location: string;
+  host: string | null;
+  price: string | null;
+  rating: number | null;
+  reviews: number | null;
+  image: string | null;
+}) {
+  return (
+    <View style={styles.sy}>
+      <View style={styles.syProviderRow}>
+        <View style={styles.syDot} />
+        <Text style={styles.syProvider}>Airbnb</Text>
+        {rating != null ? (
+          <View style={styles.syRatingRow}>
+            <Star size={11} color="#111111" fill="#111111" strokeWidth={1} />
+            <Text style={styles.syRatingText}>
+              {rating.toFixed(1)}
+              {reviews != null ? ` (${formatCompact(reviews)})` : ""}
+            </Text>
+          </View>
+        ) : null}
+      </View>
+      {image ? (
+        <View style={styles.syImageWrap}>
+          <Image source={{ uri: image }} style={styles.syImage} resizeMode="cover" />
+        </View>
+      ) : null}
+      <Text style={styles.syTitle} numberOfLines={2}>
+        {title}
+      </Text>
+      {location ? (
+        <View style={styles.syMetaRow}>
+          <MapPin size={12} color="#FF385C" strokeWidth={2} />
+          <Text style={styles.syMetaText} numberOfLines={1}>
+            {location}
+          </Text>
+        </View>
+      ) : null}
+      {host ? (
+        <Text style={styles.syHost} numberOfLines={1}>
+          Hosted by {host}
+        </Text>
+      ) : null}
+      {price ? (
+        <Text style={styles.syPrice} numberOfLines={1}>
+          {price}
+        </Text>
+      ) : null}
+    </View>
+  );
+}
+
+/* ---------------- Template Q: Steam game card ---------------- */
+
+function GameCard({
+  title,
+  description,
+  image,
+  genre,
+  releaseDate,
+  metacritic,
+  price,
+}: {
+  title: string;
+  description: string;
+  image: string | null;
+  genre: string | null;
+  releaseDate: string | null;
+  metacritic: number | null;
+  price: string | null;
+}) {
+  return (
+    <View style={styles.gm}>
+      <View style={styles.gmProviderRow}>
+        <View style={styles.gmDot} />
+        <Text style={styles.gmProvider}>Steam</Text>
+        {metacritic != null ? (
+          <View style={styles.gmMetaChip}>
+            <Text style={styles.gmMetaText}>{Math.round(metacritic)}</Text>
+          </View>
+        ) : null}
+      </View>
+      {image ? (
+        <View style={styles.gmImageWrap}>
+          <Image source={{ uri: image }} style={styles.gmImage} resizeMode="cover" />
+        </View>
+      ) : null}
+      <Text style={styles.gmTitle} numberOfLines={2}>
+        {title}
+      </Text>
+      {description ? (
+        <Text style={styles.gmDesc} numberOfLines={2}>
+          {description}
+        </Text>
+      ) : null}
+      {genre || releaseDate ? (
+        <View style={styles.gmMetaRow}>
+          {genre ? (
+            <Text style={styles.gmGenre} numberOfLines={1}>
+              {genre}
+            </Text>
+          ) : null}
+          {releaseDate ? (
+            <Text style={styles.gmRelease} numberOfLines={1}>
+              Out {releaseDate}
+            </Text>
+          ) : null}
+        </View>
+      ) : null}
+      {price ? (
+        <Text style={styles.gmPrice} numberOfLines={1}>
+          {price}
+        </Text>
+      ) : null}
+    </View>
+  );
+}
+
+/* ---------------- Template R: Book card ---------------- */
+
+function BookCard({
+  title,
+  authorName,
+  pages,
+  rating,
+  reviews,
+  image,
+}: {
+  title: string;
+  authorName: string;
+  pages: number | null;
+  rating: number | null;
+  reviews: number | null;
+  image: string | null;
+}) {
+  return (
+    <View style={styles.bk}>
+      <View style={styles.bkProviderRow}>
+        <View style={styles.bkDot} />
+        <Text style={styles.bkProvider}>Book</Text>
+      </View>
+      <View style={styles.bkRow}>
+        {image ? (
+          <Image source={{ uri: image }} style={styles.bkCover} resizeMode="cover" />
+        ) : (
+          <View style={[styles.bkCover, styles.bkCoverFallback]}>
+            <BookOpen size={24} color="#754C1E" strokeWidth={1.5} />
+          </View>
+        )}
+        <View style={styles.bkCol}>
+          <Text style={styles.bkTitle} numberOfLines={3}>
+            {title}
+          </Text>
+          <Text style={styles.bkAuthor} numberOfLines={1}>
+            {authorName}
+          </Text>
+        </View>
+      </View>
+      {rating != null || pages != null ? (
+        <View style={styles.bkMetaRow}>
+          {rating != null ? (
+            <View style={styles.bkRating}>
+              <Star size={12} color="#B45309" fill="#B45309" strokeWidth={1} />
+              <Text style={styles.bkRatingText}>
+                {rating.toFixed(1)}
+                {reviews != null ? ` (${formatCompact(reviews)})` : ""}
+              </Text>
+            </View>
+          ) : null}
+          {pages != null ? (
+            <Text style={styles.bkPages}>{pages} pages</Text>
+          ) : null}
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+/* ---------------- Template S: Product Hunt launch card ---------------- */
+
+function LaunchCard({
+  title,
+  tagline,
+  maker,
+  upvotes,
+}: {
+  title: string;
+  tagline: string | null;
+  maker: string;
+  upvotes: number | null;
+}) {
+  return (
+    <View style={styles.lc}>
+      <View style={styles.lcProviderRow}>
+        <View style={styles.lcDot} />
+        <Text style={styles.lcProvider}>Product Hunt</Text>
+      </View>
+      <View style={styles.lcTitleRow}>
+        <ArrowBigUp size={32} color="#FF6154" strokeWidth={2} />
+        <Text style={styles.lcTitle} numberOfLines={2}>
+          {title}
+        </Text>
+      </View>
+      {tagline ? (
+        <Text style={styles.lcTagline} numberOfLines={2}>
+          {tagline}
+        </Text>
+      ) : null}
+      <View style={styles.lcFooter}>
+        <View style={styles.lcAvatar}>
+          <Text style={styles.lcAvatarText}>{getInitials(maker).charAt(0)}</Text>
+        </View>
+        <Text style={styles.lcMaker} numberOfLines={1}>
+          {maker}
+        </Text>
+        <View style={styles.lcVotes}>
+          <ArrowBigUp size={13} color="#FFFFFF" strokeWidth={2.5} />
+          <Text style={styles.lcVotesText}>{upvotes != null ? formatCompact(upvotes) : "Vote"}</Text>
+        </View>
+      </View>
     </View>
   );
 }
@@ -2495,6 +3316,777 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     fontSize: 12,
     fontWeight: "600",
+  },
+
+  /* linkedin embed */
+  li: {
+    backgroundColor: "#FFFFFF",
+    padding: 16,
+  },
+  liHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  liAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "#0A66C2",
+  },
+  liAvatarFallback: {
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  liAvatarText: {
+    color: "#FFFFFF",
+    fontWeight: "800",
+    fontSize: 14,
+  },
+  liNames: {
+    flex: 1,
+  },
+  liName: {
+    fontSize: 15,
+    fontWeight: "800",
+    color: "#111111",
+  },
+  liMeta: {
+    fontSize: 12,
+    color: "#666666",
+    marginTop: 1,
+  },
+  liBadge: {
+    width: 20,
+    height: 20,
+    borderRadius: 4,
+    backgroundColor: "#0A66C2",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  liBadgeText: {
+    color: "#FFFFFF",
+    fontSize: 10,
+    fontWeight: "800",
+  },
+  liBody: {
+    fontSize: 15,
+    lineHeight: 22,
+    color: "#111111",
+    marginTop: 10,
+  },
+  liFooter: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+    marginTop: 12,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: "#EFF3F4",
+  },
+  liStat: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+  },
+  liStatText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#666666",
+  },
+
+  /* indeed embed */
+  in: {
+    backgroundColor: "#FFFFFF",
+    padding: 16,
+  },
+  inProviderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginBottom: 10,
+  },
+  inDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: "#2557A7",
+  },
+  inProvider: {
+    fontSize: 12,
+    fontWeight: "800",
+    letterSpacing: 0.6,
+    color: "#333333",
+    flexShrink: 1,
+  },
+  inPosted: {
+    flex: 1,
+    fontSize: 12,
+    color: "#666666",
+    textAlign: "right",
+  },
+  inImageWrap: {
+    borderRadius: 12,
+    overflow: "hidden",
+    aspectRatio: 16 / 6,
+    backgroundColor: "#F5F5F5",
+    marginBottom: 10,
+  },
+  inImage: {
+    width: "100%",
+    height: "100%",
+  },
+  inTitle: {
+    fontSize: 17,
+    lineHeight: 23,
+    fontWeight: "700",
+    color: "#111111",
+    letterSpacing: -0.1,
+  },
+  inCompanyRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    marginTop: 6,
+  },
+  inCompany: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#444444",
+  },
+  inMetaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: 8,
+    marginTop: 8,
+  },
+  inMetaItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  inMetaText: {
+    fontSize: 12,
+    color: "#555555",
+    flexShrink: 1,
+  },
+  inJobType: {
+    backgroundColor: "#EDF2FA",
+    borderRadius: 6,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+  },
+  inJobTypeText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#2557A7",
+  },
+  inSalaryRow: {
+    marginTop: 10,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: "#EFF1F3",
+  },
+  inSalary: {
+    fontSize: 16,
+    fontWeight: "800",
+    color: "#2557A7",
+  },
+
+  /* restaurant embed */
+  re: {
+    backgroundColor: "#FFFFFF",
+    padding: 16,
+  },
+  reProviderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginBottom: 10,
+  },
+  reDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  reProvider: {
+    fontSize: 12,
+    fontWeight: "800",
+    letterSpacing: 0.6,
+    color: "#333333",
+    flexShrink: 1,
+  },
+  reRatingRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+  },
+  reRatingText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#111111",
+  },
+  reRatingCount: {
+    fontSize: 11,
+    color: "#666666",
+  },
+  reImageWrap: {
+    borderRadius: 12,
+    overflow: "hidden",
+    aspectRatio: 16 / 8,
+    backgroundColor: "#F5F5F5",
+  },
+  reImage: {
+    width: "100%",
+    height: "100%",
+  },
+  reTitle: {
+    fontSize: 16,
+    lineHeight: 21,
+    fontWeight: "800",
+    color: "#111111",
+    marginTop: 10,
+  },
+  reCuisine: {
+    fontSize: 13,
+    color: "#555555",
+    marginTop: 3,
+    fontWeight: "500",
+  },
+  reMetaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: 12,
+    marginTop: 8,
+  },
+  reMetaItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  reMetaText: {
+    fontSize: 12,
+    color: "#444444",
+    flexShrink: 1,
+  },
+  rePrice: {
+    fontSize: 17,
+    fontWeight: "800",
+    marginTop: 10,
+  },
+
+  /* pinterest embed */
+  pi: {
+    backgroundColor: "#FFFFFF",
+    padding: 16,
+  },
+  piProviderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginBottom: 10,
+  },
+  piDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: "#E60023",
+  },
+  piProvider: {
+    fontSize: 12,
+    fontWeight: "800",
+    letterSpacing: 0.6,
+    color: "#B73B3B",
+  },
+  piImageWrap: {
+    borderRadius: 12,
+    overflow: "hidden",
+    aspectRatio: 4 / 3,
+    backgroundColor: "#F5F5F5",
+  },
+  piImage: {
+    width: "100%",
+    height: "100%",
+  },
+  piTitle: {
+    fontSize: 15,
+    lineHeight: 21,
+    fontWeight: "700",
+    color: "#111111",
+    marginTop: 10,
+  },
+  piDesc: {
+    fontSize: 13,
+    lineHeight: 19,
+    color: "#555555",
+    marginTop: 5,
+  },
+  piFooter: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 12,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: "#F0F0F0",
+  },
+  piAvatar: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: "#E60023",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  piAvatarText: {
+    color: "#FFFFFF",
+    fontWeight: "800",
+    fontSize: 11,
+  },
+  piAuthor: {
+    flex: 1,
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#444444",
+  },
+
+  /* app embed */
+  ap: {
+    backgroundColor: "#FFFFFF",
+    padding: 16,
+  },
+  apProviderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginBottom: 10,
+  },
+  apDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  apProvider: {
+    fontSize: 12,
+    fontWeight: "800",
+    letterSpacing: 0.6,
+    color: "#333333",
+  },
+  apRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  apIcon: {
+    width: 58,
+    height: 58,
+    borderRadius: 14,
+    backgroundColor: "#F0F0F5",
+  },
+  apIconFallback: {
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#0A60FE",
+  },
+  apIconText: {
+    color: "#FFFFFF",
+    fontWeight: "800",
+    fontSize: 24,
+  },
+  apCol: {
+    flex: 1,
+  },
+  apTitle: {
+    fontSize: 16,
+    lineHeight: 21,
+    fontWeight: "800",
+    color: "#111111",
+  },
+  apDeveloper: {
+    fontSize: 13,
+    color: "#555555",
+    marginTop: 2,
+    fontWeight: "500",
+  },
+  apDownloadRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    marginTop: 4,
+  },
+  apDownloadText: {
+    fontSize: 11,
+    color: "#777777",
+    flexShrink: 1,
+  },
+  apCategoryChip: {
+    alignSelf: "flex-start",
+    backgroundColor: "#F0F0F5",
+    borderRadius: 999,
+    paddingHorizontal: 9,
+    paddingVertical: 3,
+    marginTop: 10,
+  },
+  apCategoryText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#333333",
+  },
+  apDesc: {
+    fontSize: 13,
+    lineHeight: 19,
+    color: "#444444",
+    marginTop: 8,
+  },
+  apFooter: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+    marginTop: 10,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: "#F0F0F0",
+  },
+  apPrice: {
+    fontSize: 16,
+    fontWeight: "800",
+    color: "#111111",
+    flexShrink: 1,
+  },
+  apRatingRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  apRatingText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#444444",
+  },
+
+  /* airbnb embed */
+  sy: {
+    backgroundColor: "#FFFFFF",
+    padding: 16,
+  },
+  syProviderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginBottom: 10,
+  },
+  syDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: "#FF385C",
+  },
+  syProvider: {
+    fontSize: 12,
+    fontWeight: "800",
+    letterSpacing: 0.6,
+    color: "#333333",
+    flexShrink: 1,
+  },
+  syRatingRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+  },
+  syRatingText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#444444",
+  },
+  syImageWrap: {
+    borderRadius: 12,
+    overflow: "hidden",
+    aspectRatio: 16 / 9,
+    backgroundColor: "#F5F5F5",
+  },
+  syImage: {
+    width: "100%",
+    height: "100%",
+  },
+  syTitle: {
+    fontSize: 16,
+    lineHeight: 22,
+    fontWeight: "700",
+    color: "#222222",
+    marginTop: 10,
+  },
+  syMetaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    marginTop: 5,
+  },
+  syMetaText: {
+    fontSize: 12,
+    color: "#555555",
+    flexShrink: 1,
+  },
+  syHost: {
+    fontSize: 12,
+    color: "#717171",
+    marginTop: 5,
+    fontWeight: "500",
+  },
+  syPrice: {
+    fontSize: 17,
+    fontWeight: "800",
+    color: "#222222",
+    marginTop: 10,
+  },
+
+  /* steam embed */
+  gm: {
+    backgroundColor: "#1B2838",
+    padding: 16,
+  },
+  gmProviderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginBottom: 10,
+  },
+  gmDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: "#66C0F4",
+  },
+  gmProvider: {
+    fontSize: 12,
+    fontWeight: "800",
+    letterSpacing: 0.6,
+    color: "#7EA6BD",
+    flexShrink: 1,
+  },
+  gmMetaChip: {
+    backgroundColor: "#40705A",
+    borderRadius: 6,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+  },
+  gmMetaText: {
+    color: "#FFFFFF",
+    fontSize: 10,
+    fontWeight: "800",
+  },
+  gmImageWrap: {
+    borderRadius: 12,
+    overflow: "hidden",
+    aspectRatio: 16 / 9,
+    backgroundColor: "#2A475E",
+  },
+  gmImage: {
+    width: "100%",
+    height: "100%",
+  },
+  gmTitle: {
+    fontSize: 17,
+    lineHeight: 23,
+    fontWeight: "800",
+    color: "#FFFFFF",
+    marginTop: 10,
+    letterSpacing: -0.1,
+  },
+  gmDesc: {
+    fontSize: 12,
+    lineHeight: 18,
+    color: "#B8C7D1",
+    marginTop: 5,
+  },
+  gmMetaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: 10,
+    marginTop: 8,
+  },
+  gmGenre: {
+    fontSize: 11,
+    color: "#66C0F4",
+    fontWeight: "600",
+    flexShrink: 1,
+  },
+  gmRelease: {
+    fontSize: 11,
+    color: "#8F9BA3",
+  },
+  gmPrice: {
+    fontSize: 16,
+    fontWeight: "800",
+    color: "#BEEE11",
+    marginTop: 10,
+  },
+
+  /* book embed */
+  bk: {
+    backgroundColor: "#F4F1EA",
+    padding: 16,
+  },
+  bkProviderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginBottom: 10,
+  },
+  bkDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: "#B45309",
+  },
+  bkProvider: {
+    fontSize: 12,
+    fontWeight: "800",
+    letterSpacing: 0.6,
+    color: "#8A6D3B",
+  },
+  bkRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+  },
+  bkCover: {
+    width: 76,
+    height: 116,
+    borderRadius: 4,
+    backgroundColor: "#E4DDCE",
+  },
+  bkCoverFallback: {
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  bkCol: {
+    flex: 1,
+  },
+  bkTitle: {
+    fontSize: 17,
+    lineHeight: 23,
+    fontWeight: "800",
+    color: "#2A2416",
+  },
+  bkAuthor: {
+    fontSize: 13,
+    color: "#7A6A4A",
+    marginTop: 5,
+    fontWeight: "600",
+  },
+  bkMetaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: 12,
+    marginTop: 12,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: "#E0D7C3",
+  },
+  bkRating: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  bkRatingText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#3A3220",
+  },
+  bkPages: {
+    fontSize: 12,
+    color: "#6B6049",
+  },
+
+  /* product hunt embed */
+  lc: {
+    backgroundColor: "#FFFFFF",
+    padding: 16,
+  },
+  lcProviderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginBottom: 10,
+  },
+  lcDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: "#FF6154",
+  },
+  lcProvider: {
+    fontSize: 12,
+    fontWeight: "800",
+    letterSpacing: 0.6,
+    color: "#DA552F",
+  },
+  lcTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  lcTitle: {
+    flex: 1,
+    fontSize: 18,
+    lineHeight: 24,
+    fontWeight: "800",
+    color: "#111111",
+    letterSpacing: -0.2,
+  },
+  lcTagline: {
+    fontSize: 14,
+    lineHeight: 20,
+    color: "#555555",
+    marginTop: 8,
+  },
+  lcFooter: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 12,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: "#F0F0F0",
+  },
+  lcAvatar: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: "#FF6154",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  lcAvatarText: {
+    color: "#FFFFFF",
+    fontWeight: "800",
+    fontSize: 12,
+  },
+  lcMaker: {
+    flex: 1,
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#444444",
+  },
+  lcVotes: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: "#FF6154",
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  lcVotesText: {
+    fontSize: 12,
+    fontWeight: "800",
+    color: "#FFFFFF",
   },
 });
 

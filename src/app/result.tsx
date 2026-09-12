@@ -69,6 +69,14 @@ const BG_PRESETS: { label: string; value: string }[] = [
 
 type ToolId = "theme" | "bg" | "details" | "blur" | "vignette";
 
+type ThemeField = {
+  key: string;
+  value: string;
+  setter: (value: string) => void;
+  placeholder: string;
+  keyboard: "default" | "numeric" | "decimal-pad" | "url";
+};
+
 const TOOLS: { id: ToolId; label: string; icon: typeof Layers }[] = [
   { id: "theme", label: "Presets", icon: Layers },
   { id: "details", label: "Edit", icon: PenLine },
@@ -227,12 +235,46 @@ export default function ResultScreen() {
   const [streamGame, setStreamGame] = useState("");
   const [streamViewers, setStreamViewers] = useState("");
 
+  // LinkedIn extras
+  const [liHeadline, setLiHeadline] = useState("");
+  const [liReposts, setLiReposts] = useState("");
+
+  // Indeed extras
+  const [jobSalary, setJobSalary] = useState("");
+  const [jobType, setJobType] = useState("");
+
+  // Restaurant extras (Zomato/Swiggy)
+  const [cuisine, setCuisine] = useState("");
+  const [eta, setEta] = useState("");
+
+  // App Store / Play Store extras
+  const [appCategory, setAppCategory] = useState("");
+  const [appDownloads, setAppDownloads] = useState("");
+
+  // Airbnb / stay listing extras
+  const [stayHost, setStayHost] = useState("");
+
+  // Steam game extras
+  const [gameGenre, setGameGenre] = useState("");
+  const [gameRelease, setGameRelease] = useState("");
+
+  // Book extras
+  const [bookPages, setBookPages] = useState("");
+
+  // Product Hunt launch extras
+  const [launchTagline, setLaunchTagline] = useState("");
+  const [launchUpvotes, setLaunchUpvotes] = useState("");
+
   function applyPreviewDetails(result: LinkPreview) {
     // Pre-fill editable details from parsed metadata (user can tweak)
     setAuthor(result.author || "");
     setReadMinutes(result.readingMinutes ? String(result.readingMinutes) : "");
     setDateText("");
-    setLocation(result.isTweet || result.isYouTube ? "" : result.siteName || "");
+    setLocation(
+      result.jobLocation ||
+        result.area ||
+        (result.isTweet || result.isYouTube ? "" : result.siteName || ""),
+    );
     setTweetHandle(result.handle || "");
     setTweetVerified(result.verified);
     setTweetLikes(result.likeCount != null ? String(result.likeCount) : "");
@@ -259,6 +301,20 @@ export default function ResultScreen() {
           ? String(result.viewCount)
           : "",
     );
+    setLiHeadline(result.headline || "");
+    setLiReposts(result.repostCount != null ? String(result.repostCount) : "");
+    setJobSalary(result.salary || "");
+    setJobType(result.jobType || "");
+    setCuisine(result.cuisine || "");
+    setEta(result.eta || "");
+    setAppCategory(result.category || "");
+    setAppDownloads(result.downloads || "");
+    setStayHost(result.hostName || "");
+    setGameGenre(result.genre || "");
+    setGameRelease(result.releaseDate || "");
+    setBookPages(result.pages != null ? String(result.pages) : "");
+    setLaunchTagline(result.tagline || "");
+    setLaunchUpvotes(result.upvotes != null ? String(result.upvotes) : "");
     if (result.isTwitch) {
       // Without worker creds the title/author are empty — keep the handle
       // handy so the card still labels the channel.
@@ -272,7 +328,535 @@ export default function ResultScreen() {
     else if (result.isReddit) setTheme("post");
     else if (result.isSpotify) setTheme("music");
     else if (result.isGitHub) setTheme("repo");
+    else if (result.isLinkedIn) setTheme("linkedin");
+    else if (result.isIndeed) setTheme("indeed");
+    else if (result.isZomato) setTheme("zomato");
+    else if (result.isSwiggy) setTheme("swiggy");
+    else if (result.isPinterest) setTheme("pinterest");
+    else if (result.isApp) setTheme("app");
+    else if (result.isStay) setTheme("stay");
+    else if (result.isGame) setTheme("game");
+    else if (result.isBook) setTheme("book");
+    else if (result.isLaunch) setTheme("launch");
     else if (result.isCommerce) setTheme("commerce");
+  }
+
+  function themeFields(t: CardTheme): ThemeField[] {
+    if (t === "tweet") {
+      return [
+        {
+          key: "author",
+          value: author,
+          setter: setAuthor,
+          placeholder: "Display name (e.g. Theo - t3.gg)",
+          keyboard: "default" as const,
+        },
+        {
+          key: "handle",
+          value: tweetHandle,
+          setter: setTweetHandle,
+          placeholder: "Handle without @ (e.g. theo)",
+          keyboard: "default" as const,
+        },
+        {
+          key: "dateText",
+          value: dateText,
+          setter: setDateText,
+          placeholder: "Time (e.g. 2:45 AM · Sep 11, 2026)",
+          keyboard: "default" as const,
+        },
+        {
+          key: "likes",
+          value: tweetLikes,
+          setter: setTweetLikes,
+          placeholder: "Likes (e.g. 550)",
+          keyboard: "numeric" as const,
+        },
+        {
+          key: "replies",
+          value: tweetReplies,
+          setter: setTweetReplies,
+          placeholder: "Replies (e.g. 25)",
+          keyboard: "numeric" as const,
+        },
+        {
+          key: "avatar",
+          value: tweetAvatar,
+          setter: setTweetAvatar,
+          placeholder: "Avatar image URL (optional)",
+          keyboard: "url" as const,
+        },
+      ];
+    }
+    if (t === "youtube") {
+      return [
+        {
+          key: "author",
+          value: author,
+          setter: setAuthor,
+          placeholder: "Channel (e.g. Fireship)",
+          keyboard: "default" as const,
+        },
+        {
+          key: "duration",
+          value: ytDuration,
+          setter: setYtDuration,
+          placeholder: "Duration secs or m:ss (e.g. 754)",
+          keyboard: "default" as const,
+        },
+        {
+          key: "views",
+          value: ytViews,
+          setter: setYtViews,
+          placeholder: "Views (e.g. 1.2M)",
+          keyboard: "default" as const,
+        },
+        {
+          key: "watching",
+          value: ytWatching,
+          setter: setYtWatching,
+          placeholder: "Live watching or premiere date (optional)",
+          keyboard: "default" as const,
+        },
+      ];
+    }
+    if (t === "clip") {
+      return [
+        {
+          key: "author",
+          value: author,
+          setter: setAuthor,
+          placeholder: "Creator (e.g. Scout & Suki)",
+          keyboard: "default" as const,
+        },
+        {
+          key: "handle",
+          value: tweetHandle,
+          setter: setTweetHandle,
+          placeholder: "Handle without @ (e.g. scout2015)",
+          keyboard: "default" as const,
+        },
+        {
+          key: "likes",
+          value: tweetLikes,
+          setter: setTweetLikes,
+          placeholder: "Likes (e.g. 12.5K)",
+          keyboard: "default" as const,
+        },
+        {
+          key: "replies",
+          value: tweetReplies,
+          setter: setTweetReplies,
+          placeholder: "Comments (e.g. 340)",
+          keyboard: "default" as const,
+        },
+      ];
+    }
+    if (t === "post") {
+      return [
+        {
+          key: "subreddit",
+          value: postSubreddit,
+          setter: setPostSubreddit,
+          placeholder: "Subreddit without r/ (e.g. pics)",
+          keyboard: "default" as const,
+        },
+        {
+          key: "score",
+          value: postScore,
+          setter: setPostScore,
+          placeholder: "Score / upvotes (e.g. 1234)",
+          keyboard: "default" as const,
+        },
+        {
+          key: "replies",
+          value: tweetReplies,
+          setter: setTweetReplies,
+          placeholder: "Comments (e.g. 56)",
+          keyboard: "default" as const,
+        },
+        {
+          key: "author",
+          value: author,
+          setter: setAuthor,
+          placeholder: "Author u/ (e.g. user1)",
+          keyboard: "default" as const,
+        },
+      ];
+    }
+    if (t === "music") {
+      return [
+        {
+          key: "author",
+          value: author,
+          setter: setAuthor,
+          placeholder: "Artist (e.g. The Weeknd)",
+          keyboard: "default" as const,
+        },
+      ];
+    }
+    if (t === "commerce") {
+      return [
+        {
+          key: "price",
+          value: cPrice,
+          setter: setCPrice,
+          placeholder: "Price with symbol (e.g. ₹1,299)",
+          keyboard: "default" as const,
+        },
+        {
+          key: "mrp",
+          value: cMrp,
+          setter: setCMrp,
+          placeholder: "MRP with symbol (optional)",
+          keyboard: "default" as const,
+        },
+        {
+          key: "rating",
+          value: cRating,
+          setter: setCRating,
+          placeholder: "Rating 0-5 (e.g. 4.3)",
+          keyboard: "decimal-pad" as const,
+        },
+        {
+          key: "seller",
+          value: cSeller,
+          setter: setCSeller,
+          placeholder: "Seller (e.g. RetailNet)",
+          keyboard: "default" as const,
+        },
+      ];
+    }
+    if (t === "stream") {
+      return [
+        {
+          key: "author",
+          value: author,
+          setter: setAuthor,
+          placeholder: "Streamer (e.g. Shroud)",
+          keyboard: "default" as const,
+        },
+        {
+          key: "game",
+          value: streamGame,
+          setter: setStreamGame,
+          placeholder: "Game / category (e.g. Valorant)",
+          keyboard: "default" as const,
+        },
+        {
+          key: "viewers",
+          value: streamViewers,
+          setter: setStreamViewers,
+          placeholder: "Viewers (e.g. 23.4K)",
+          keyboard: "default" as const,
+        },
+        {
+          key: "avatar",
+          value: tweetAvatar,
+          setter: setTweetAvatar,
+          placeholder: "Profile image URL (optional)",
+          keyboard: "url" as const,
+        },
+      ];
+    }
+    if (t === "linkedin") {
+      return [
+        {
+          key: "author",
+          value: author,
+          setter: setAuthor,
+          placeholder: "Name (e.g. Theo Browne)",
+          keyboard: "default" as const,
+        },
+        {
+          key: "headline",
+          value: liHeadline,
+          setter: setLiHeadline,
+          placeholder: "Headline / role (e.g. Staff Engineer at Vercel)",
+          keyboard: "default" as const,
+        },
+        {
+          key: "reposts",
+          value: liReposts,
+          setter: setLiReposts,
+          placeholder: "Reposts (e.g. 320)",
+          keyboard: "numeric" as const,
+        },
+        {
+          key: "dateText",
+          value: dateText,
+          setter: setDateText,
+          placeholder: "Date (e.g. Aug 27, 2026)",
+          keyboard: "default" as const,
+        },
+      ];
+    }
+    if (t === "indeed") {
+      return [
+        {
+          key: "author",
+          value: author,
+          setter: setAuthor,
+          placeholder: "Company (e.g. Google)",
+          keyboard: "default" as const,
+        },
+        {
+          key: "salary",
+          value: jobSalary,
+          setter: setJobSalary,
+          placeholder: "Salary (e.g. ₹20L-30L a year)",
+          keyboard: "default" as const,
+        },
+        {
+          key: "jobType",
+          value: jobType,
+          setter: setJobType,
+          placeholder: "Job type (e.g. Full-time)",
+          keyboard: "default" as const,
+        },
+        {
+          key: "location",
+          value: location,
+          setter: setLocation,
+          placeholder: "Location (e.g. Bengaluru, India)",
+          keyboard: "default" as const,
+        },
+      ];
+    }
+    if (t === "zomato" || t === "swiggy") {
+      return [
+        {
+          key: "cuisine",
+          value: cuisine,
+          setter: setCuisine,
+          placeholder: "Cuisine (e.g. North Indian, Chinese)",
+          keyboard: "default" as const,
+        },
+        {
+          key: "eta",
+          value: eta,
+          setter: setEta,
+          placeholder: "Delivery ETA (e.g. 25-30 min)",
+          keyboard: "default" as const,
+        },
+        {
+          key: "location",
+          value: location,
+          setter: setLocation,
+          placeholder: "Area (e.g. Indiranagar)",
+          keyboard: "default" as const,
+        },
+        {
+          key: "price",
+          value: cPrice,
+          setter: setCPrice,
+          placeholder: "Price for two (e.g. ₹500)",
+          keyboard: "default" as const,
+        },
+        {
+          key: "rating",
+          value: cRating,
+          setter: setCRating,
+          placeholder: "Rating 0-5 (e.g. 4.3)",
+          keyboard: "decimal-pad" as const,
+        },
+      ];
+    }
+    if (t === "pinterest") {
+      return [
+        {
+          key: "author",
+          value: author,
+          setter: setAuthor,
+          placeholder: "Creator / board (e.g. Minimalist Living)",
+          keyboard: "default" as const,
+        },
+      ];
+    }
+    if (t === "app") {
+      return [
+        {
+          key: "author",
+          value: author,
+          setter: setAuthor,
+          placeholder: "Developer (e.g. Spotify AB)",
+          keyboard: "default" as const,
+        },
+        {
+          key: "category",
+          value: appCategory,
+          setter: setAppCategory,
+          placeholder: "Category (e.g. Music)",
+          keyboard: "default" as const,
+        },
+        {
+          key: "downloads",
+          value: appDownloads,
+          setter: setAppDownloads,
+          placeholder: "Downloads (e.g. 1B+)",
+          keyboard: "default" as const,
+        },
+        {
+          key: "price",
+          value: cPrice,
+          setter: setCPrice,
+          placeholder: "Price (e.g. 0 or $4.99)",
+          keyboard: "default" as const,
+        },
+        {
+          key: "rating",
+          value: cRating,
+          setter: setCRating,
+          placeholder: "Rating 0-5 (e.g. 4.8)",
+          keyboard: "decimal-pad" as const,
+        },
+      ];
+    }
+    if (t === "stay") {
+      return [
+        {
+          key: "host",
+          value: stayHost,
+          setter: setStayHost,
+          placeholder: "Host (e.g. Superhouse)",
+          keyboard: "default" as const,
+        },
+        {
+          key: "location",
+          value: location,
+          setter: setLocation,
+          placeholder: "Neighbourhood (e.g. Santorini)",
+          keyboard: "default" as const,
+        },
+        {
+          key: "price",
+          value: cPrice,
+          setter: setCPrice,
+          placeholder: "Nightly price (e.g. ₹8,500)",
+          keyboard: "default" as const,
+        },
+        {
+          key: "rating",
+          value: cRating,
+          setter: setCRating,
+          placeholder: "Rating 0-5 (e.g. 4.9)",
+          keyboard: "decimal-pad" as const,
+        },
+      ];
+    }
+    if (t === "game") {
+      return [
+        {
+          key: "genre",
+          value: gameGenre,
+          setter: setGameGenre,
+          placeholder: "Genres (e.g. Action, Adventure)",
+          keyboard: "default" as const,
+        },
+        {
+          key: "releaseDate",
+          value: gameRelease,
+          setter: setGameRelease,
+          placeholder: "Release date (e.g. Feb 4, 2022)",
+          keyboard: "default" as const,
+        },
+        {
+          key: "price",
+          value: cPrice,
+          setter: setCPrice,
+          placeholder: "Price (e.g. ₹1,999)",
+          keyboard: "default" as const,
+        },
+        {
+          key: "rating",
+          value: cRating,
+          setter: setCRating,
+          placeholder: "Metacritic 0-100 (e.g. 94)",
+          keyboard: "numeric" as const,
+        },
+      ];
+    }
+    if (t === "book") {
+      return [
+        {
+          key: "author",
+          value: author,
+          setter: setAuthor,
+          placeholder: "Author (e.g. J.R.R. Tolkien)",
+          keyboard: "default" as const,
+        },
+        {
+          key: "bookPages",
+          value: bookPages,
+          setter: setBookPages,
+          placeholder: "Pages (e.g. 423)",
+          keyboard: "numeric" as const,
+        },
+        {
+          key: "rating",
+          value: cRating,
+          setter: setCRating,
+          placeholder: "Rating 0-5 (e.g. 4.5)",
+          keyboard: "decimal-pad" as const,
+        },
+      ];
+    }
+    if (t === "launch") {
+      return [
+        {
+          key: "author",
+          value: author,
+          setter: setAuthor,
+          placeholder: "Maker (e.g. Brian Lovin)",
+          keyboard: "default" as const,
+        },
+        {
+          key: "tagline",
+          value: launchTagline,
+          setter: setLaunchTagline,
+          placeholder: "Tagline (e.g. The lego kit for AI agents)",
+          keyboard: "default" as const,
+        },
+        {
+          key: "upvotes",
+          value: launchUpvotes,
+          setter: setLaunchUpvotes,
+          placeholder: "Upvotes (e.g. 620)",
+          keyboard: "numeric" as const,
+        },
+      ];
+    }
+    if (t === "repo") return [];
+    return [
+      {
+        key: "author",
+        value: author,
+        setter: setAuthor,
+        placeholder: "Author (e.g. Technical Bot)",
+        keyboard: "default" as const,
+      },
+      {
+        key: "readMinutes",
+        value: readMinutes,
+        setter: setReadMinutes,
+        placeholder: "Read time mins (e.g. 2)",
+        keyboard: "numeric" as const,
+      },
+      {
+        key: "dateText",
+        value: dateText,
+        setter: setDateText,
+        placeholder: "Date (e.g. Aug 27, 2026)",
+        keyboard: "default" as const,
+      },
+      {
+        key: "location",
+        value: location,
+        setter: setLocation,
+        placeholder: "Pill / brand (e.g. Georgia)",
+        keyboard: "default" as const,
+      },
+    ];
   }
 
   async function load(rawUrl: string | undefined) {
@@ -597,6 +1181,20 @@ export default function ResultScreen() {
                 streamKind={streamKind}
                 game={streamGame}
                 viewers={streamViewers}
+                headline={liHeadline}
+                reposts={liReposts}
+                salary={jobSalary}
+                jobType={jobType}
+                cuisine={cuisine}
+                eta={eta}
+                category={appCategory}
+                downloads={appDownloads}
+                host={stayHost}
+                genre={gameGenre}
+                releaseDate={gameRelease}
+                pages={bookPages}
+                tagline={launchTagline}
+                upvotes={launchUpvotes}
               />
             ) : null}
           </View>
@@ -674,6 +1272,16 @@ export default function ResultScreen() {
                             "repo",
                             "commerce",
                             "stream",
+                            "linkedin",
+                            "indeed",
+                            "zomato",
+                            "swiggy",
+                            "pinterest",
+                            "app",
+                            "stay",
+                            "game",
+                            "book",
+                            "launch",
                           ] as CardTheme[]
                         ).map((t) => {
                           const isActive = theme === t;
@@ -1061,251 +1669,7 @@ export default function ResultScreen() {
                       </Text>
                     </View>
                     <View className="gap-2">
-                      {(
-                        theme === "tweet"
-                          ? [
-                              {
-                                key: "author",
-                                value: author,
-                                setter: setAuthor,
-                                placeholder: "Display name (e.g. Theo - t3.gg)",
-                                keyboard: "default" as const,
-                              },
-                              {
-                                key: "handle",
-                                value: tweetHandle,
-                                setter: setTweetHandle,
-                                placeholder: "Handle without @ (e.g. theo)",
-                                keyboard: "default" as const,
-                              },
-                              {
-                                key: "dateText",
-                                value: dateText,
-                                setter: setDateText,
-                                placeholder: "Time (e.g. 2:45 AM · Sep 11, 2026)",
-                                keyboard: "default" as const,
-                              },
-                              {
-                                key: "likes",
-                                value: tweetLikes,
-                                setter: setTweetLikes,
-                                placeholder: "Likes (e.g. 550)",
-                                keyboard: "numeric" as const,
-                              },
-                              {
-                                key: "replies",
-                                value: tweetReplies,
-                                setter: setTweetReplies,
-                                placeholder: "Replies (e.g. 25)",
-                                keyboard: "numeric" as const,
-                              },
-                              {
-                                key: "avatar",
-                                value: tweetAvatar,
-                                setter: setTweetAvatar,
-                                placeholder: "Avatar image URL (optional)",
-                                keyboard: "url" as const,
-                              },
-                            ]
-                          : theme === "youtube"
-                            ? [
-                                {
-                                  key: "author",
-                                  value: author,
-                                  setter: setAuthor,
-                                  placeholder: "Channel (e.g. Fireship)",
-                                  keyboard: "default" as const,
-                                },
-                                {
-                                  key: "duration",
-                                  value: ytDuration,
-                                  setter: setYtDuration,
-                                  placeholder: "Duration secs or m:ss (e.g. 754)",
-                                  keyboard: "default" as const,
-                                },
-                                {
-                                  key: "views",
-                                  value: ytViews,
-                                  setter: setYtViews,
-                                  placeholder: "Views (e.g. 1.2M)",
-                                  keyboard: "default" as const,
-                                },
-                                {
-                                  key: "watching",
-                                  value: ytWatching,
-                                  setter: setYtWatching,
-                                  placeholder:
-                                    "Live watching or premiere date (optional)",
-                                  keyboard: "default" as const,
-                                },
-                              ]
-                            : theme === "clip"
-                              ? [
-                                  {
-                                    key: "author",
-                                    value: author,
-                                    setter: setAuthor,
-                                    placeholder: "Creator (e.g. Scout & Suki)",
-                                    keyboard: "default" as const,
-                                  },
-                                  {
-                                    key: "handle",
-                                    value: tweetHandle,
-                                    setter: setTweetHandle,
-                                    placeholder: "Handle without @ (e.g. scout2015)",
-                                    keyboard: "default" as const,
-                                  },
-                                  {
-                                    key: "likes",
-                                    value: tweetLikes,
-                                    setter: setTweetLikes,
-                                    placeholder: "Likes (e.g. 12.5K)",
-                                    keyboard: "default" as const,
-                                  },
-                                  {
-                                    key: "replies",
-                                    value: tweetReplies,
-                                    setter: setTweetReplies,
-                                    placeholder: "Comments (e.g. 340)",
-                                    keyboard: "default" as const,
-                                  },
-                                ]
-                              : theme === "post"
-                                ? [
-                                    {
-                                      key: "subreddit",
-                                      value: postSubreddit,
-                                      setter: setPostSubreddit,
-                                      placeholder: "Subreddit without r/ (e.g. pics)",
-                                      keyboard: "default" as const,
-                                    },
-                                    {
-                                      key: "score",
-                                      value: postScore,
-                                      setter: setPostScore,
-                                      placeholder: "Score / upvotes (e.g. 1234)",
-                                      keyboard: "default" as const,
-                                    },
-                                    {
-                                      key: "replies",
-                                      value: tweetReplies,
-                                      setter: setTweetReplies,
-                                      placeholder: "Comments (e.g. 56)",
-                                      keyboard: "default" as const,
-                                    },
-                                    {
-                                      key: "author",
-                                      value: author,
-                                      setter: setAuthor,
-                                      placeholder: "Author u/ (e.g. user1)",
-                                      keyboard: "default" as const,
-                                    },
-                                  ]
-                                : theme === "music"
-                                  ? [
-                                      {
-                                        key: "author",
-                                        value: author,
-                                        setter: setAuthor,
-                                        placeholder: "Artist (e.g. The Weeknd)",
-                                        keyboard: "default" as const,
-                                      },
-                                    ]
-                                  : theme === "commerce"
-                                    ? [
-                                        {
-                                          key: "price",
-                                          value: cPrice,
-                                          setter: setCPrice,
-                                          placeholder: "Price with symbol (e.g. ₹1,299)",
-                                          keyboard: "default" as const,
-                                        },
-                                        {
-                                          key: "mrp",
-                                          value: cMrp,
-                                          setter: setCMrp,
-                                          placeholder: "MRP with symbol (optional)",
-                                          keyboard: "default" as const,
-                                        },
-                                        {
-                                          key: "rating",
-                                          value: cRating,
-                                          setter: setCRating,
-                                          placeholder: "Rating 0-5 (e.g. 4.3)",
-                                          keyboard: "decimal-pad" as const,
-                                        },
-                                        {
-                                          key: "seller",
-                                          value: cSeller,
-                                          setter: setCSeller,
-                                          placeholder: "Seller (e.g. RetailNet)",
-                                          keyboard: "default" as const,
-                                        },
-                                      ]
-                                    : theme === "stream"
-                                      ? [
-                                          {
-                                            key: "author",
-                                            value: author,
-                                            setter: setAuthor,
-                                            placeholder: "Streamer (e.g. Shroud)",
-                                            keyboard: "default" as const,
-                                          },
-                                          {
-                                            key: "game",
-                                            value: streamGame,
-                                            setter: setStreamGame,
-                                            placeholder: "Game / category (e.g. Valorant)",
-                                            keyboard: "default" as const,
-                                          },
-                                          {
-                                            key: "viewers",
-                                            value: streamViewers,
-                                            setter: setStreamViewers,
-                                            placeholder: "Viewers (e.g. 23.4K)",
-                                            keyboard: "default" as const,
-                                          },
-                                          {
-                                            key: "avatar",
-                                            value: tweetAvatar,
-                                            setter: setTweetAvatar,
-                                            placeholder: "Profile image URL (optional)",
-                                            keyboard: "url" as const,
-                                          },
-                                        ]
-                                      : theme === "repo"
-                                        ? []
-                                        : [
-                                            {
-                                              key: "author",
-                                              value: author,
-                                              setter: setAuthor,
-                                              placeholder: "Author (e.g. Technical Bot)",
-                                              keyboard: "default" as const,
-                                            },
-                                            {
-                                              key: "readMinutes",
-                                              value: readMinutes,
-                                              setter: setReadMinutes,
-                                              placeholder: "Read time mins (e.g. 2)",
-                                              keyboard: "numeric" as const,
-                                            },
-                                            {
-                                              key: "dateText",
-                                              value: dateText,
-                                              setter: setDateText,
-                                              placeholder: "Date (e.g. Aug 27, 2026)",
-                                              keyboard: "default" as const,
-                                            },
-                                            {
-                                              key: "location",
-                                              value: location,
-                                              setter: setLocation,
-                                              placeholder: "Pill / brand (e.g. Georgia)",
-                                              keyboard: "default" as const,
-                                            },
-                                          ]
-                      ).map((field) => (
+                      {themeFields(theme).map((field) => (
                         <TextInput
                           key={field.key}
                           value={field.value}
