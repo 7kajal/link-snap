@@ -199,10 +199,12 @@ export function parseTweetOembed(json: {
     text = decodeEntities(text);
     // oEmbed appends pic/link tails like "pic.twitter.com/xyz" — keep them, they're part of the tweet.
   }
-  // Author avatar is not included in oEmbed; best-effort <img> extraction.
+  // Author avatar is not included in oEmbed reliably; best-effort <img>
+  // extraction, falling back to the handle-based avatar resolver.
   let avatar: string | null = null;
   const img = html.match(/<img[^>]+src=["']([^"']+)["'][^>]*>/i);
   if (img) avatar = img[1];
+  if (!avatar && handle) avatar = `https://unavatar.io/x/${handle}`;
 
   return {
     ...base,
@@ -345,14 +347,19 @@ async function fetchYouTubeOembed(url: string): Promise<LinkPreview | null> {
     const json = (await res.json()) as {
       title?: string;
       author_name?: string;
+      author_url?: string;
       thumbnail_url?: string;
     };
     if (!json || !json.title) return null;
     const base = youtubeFallback(url);
+    const handle =
+      (json.author_url || "").match(/(?:youtube\.com|youtu\.be)\/(@[^/?#]+)/i)?.[1] || null;
     return {
       ...base,
       title: json.title,
       author: json.author_name || null,
+      handle,
+      avatar: handle ? `https://unavatar.io/youtube/${handle.slice(1)}` : null,
       image: json.thumbnail_url || null,
     };
   } catch {
@@ -370,6 +377,16 @@ function overlayYouTubeScrape(base: LinkPreview, html: string): LinkPreview {
   if (len) out.durationSec = Number(len[1]);
   const views = html.match(/"viewCount":"(\d+)"/);
   if (views) out.viewCount = Number(views[1]);
+  // Channel avatar from the embedded player response (microformat) or, failing
+  // that, the owner renderer inside ytInitialData. Avoids the initials dummy.
+  const chThumb =
+    html.match(/"channelThumbnail":\{"thumbnails":\[\{"url":"([^"]+)"/) ||
+    html.match(/"videoOwnerRenderer":\{"thumbnail":\{"thumbnails":\[\{"url":"([^"]+)"/);
+  if (chThumb) {
+    const avatar = chThumb[1].replace(/\\\//g, "/");
+    out.channelThumb = avatar;
+    out.avatar = avatar;
+  }
   // Channel name lives in videoDetails ("viewCount" and "author" are adjacent
   // there). Without this the card falls back to the "YouTube" site label.
   const vdAuthor = html.match(/"viewCount":"\d+","author":"((?:[^"\\]|\\.)*)"/);

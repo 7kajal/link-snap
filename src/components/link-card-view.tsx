@@ -8,6 +8,7 @@ import {
   type ViewProps,
 } from "react-native";
 import { ArrowBigUp, Check, GitFork, Heart, MapPin, MessageCircle, Music, Play, Star } from "lucide-react-native";
+import Svg, { Defs, RadialGradient, Rect, Stop } from "react-native-svg";
 import { domainFromUrl, getPalette, type Palette } from "@/lib/palette";
 import {
   commerceStoreFromUrl,
@@ -37,6 +38,8 @@ export type LinkCardViewProps = ViewProps & {
   bgMode?: CardBackgroundMode;
   /** Solid background color when bgMode is "color". */
   bgColor?: string;
+  /** Optional image used only for the full-bleed scene background. */
+  backgroundImage?: string | null;
   /** Backdrop blur strength (image mode). 0 = sharp. */
   blurRadius?: number;
   /** Vignette strength over the scene background, 0 (off) to 1 (max). */
@@ -137,29 +140,17 @@ function SceneBackdrop({
         </>
       )}
       {v > 0 ? (
-        <>
-          <View
-            style={[
-              styles.sceneBackdropFill,
-              styles.sceneBackdropVignette,
-              { borderWidth: 90, borderColor: `rgba(0,0,0,${0.3 * v})` },
-            ]}
-          />
-          <View
-            style={[
-              styles.sceneBackdropFill,
-              styles.sceneBackdropVignette,
-              { borderWidth: 55, borderColor: `rgba(0,0,0,${0.22 * v})` },
-            ]}
-          />
-          <View
-            style={[
-              styles.sceneBackdropFill,
-              styles.sceneBackdropVignette,
-              { borderWidth: 28, borderColor: `rgba(0,0,0,${0.15 * v})` },
-            ]}
-          />
-        </>
+        <Svg width="100%" height="100%" style={styles.sceneBackdropFill}>
+          <Defs>
+            <RadialGradient id="vignette" cx="50%" cy="48%" rx="72%" ry="58%">
+              <Stop offset="0%" stopColor="#000000" stopOpacity={0} />
+              <Stop offset="48%" stopColor="#000000" stopOpacity={0} />
+              <Stop offset="78%" stopColor="#000000" stopOpacity={0.24 * v} />
+              <Stop offset="100%" stopColor="#000000" stopOpacity={0.82 * v} />
+            </RadialGradient>
+          </Defs>
+          <Rect width="100%" height="100%" fill="url(#vignette)" />
+        </Svg>
       ) : null}
     </View>
   );
@@ -442,6 +433,7 @@ const LinkCardView = forwardRef<View, LinkCardViewProps>(function LinkCardView(
     safeMode = false,
     bgMode = "image",
     bgColor = "#0B0B12",
+    backgroundImage,
     blurRadius = SCENE_BLUR,
     vignette = 0,
     author,
@@ -684,7 +676,7 @@ const LinkCardView = forwardRef<View, LinkCardViewProps>(function LinkCardView(
     >
       {width > 0 ? (
         <>
-          <SceneBackdrop image={preview?.image || null} palette={palette} mode={bgMode} solidColor={bgColor} blur={blurRadius} vignette={vignette} />
+          <SceneBackdrop image={backgroundImage ?? preview?.image ?? null} palette={palette} mode={bgMode} solidColor={bgColor} blur={blurRadius} vignette={vignette} />
           <View style={[styles.scene, { paddingTop: safeTop, paddingBottom: safeBottom }]}>
             <CardShell theme={theme}>{renderTheme()}</CardShell>
           </View>
@@ -1541,10 +1533,6 @@ const styles = StyleSheet.create({
   sceneBackdropVeil: {
     backgroundColor: SCENE_VEIL,
   },
-  sceneBackdropVignette: {
-    borderRadius: 28,
-  },
-
   /* scene container + floating card shell */
   scene: {
     position: "absolute",

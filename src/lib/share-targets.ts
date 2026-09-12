@@ -59,8 +59,9 @@ async function isAppInstalled(target: Exclude<ShareTargetId, 'more'>): Promise<b
 
 /**
  * Which share targets can be offered right now. Web only supports the system
- * sheet. Story targets additionally require a Facebook App ID (Meta mandate)
- * and the host app to be installed.
+ * sheet. Android's Instagram story intent works without a Facebook App ID
+ * (it is only used for attribution), so Instagram only requires the host app
+ * to be installed. Facebook Stories still requires a Facebook App ID.
  */
 export async function getAvailableTargets(): Promise<Record<ShareTargetId, boolean>> {
   if (Platform.OS === 'web') {
@@ -73,7 +74,7 @@ export async function getAvailableTargets(): Promise<Record<ShareTargetId, boole
     isAppInstalled('facebook'),
   ]);
   return {
-    instagram: instagram && appId.length > 0,
+    instagram,
     whatsapp,
     facebook: facebook && appId.length > 0,
     more: true,

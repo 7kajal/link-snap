@@ -9,6 +9,7 @@ import {
   MessageCircle,
   Palette,
   PenLine,
+  Pipette,
   Share2,
   X,
 } from "lucide-react-native";
@@ -29,6 +30,9 @@ import {
   View,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
+import * as ImageManipulator from "expo-image-manipulator";
+import * as ImagePicker from "expo-image-picker";
+import { PNG } from "pngjs/browser";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 
@@ -37,6 +41,7 @@ import { SkeletonCard } from "@/components/skeleton-card";
 import { fetchLinkPreview, type LinkPreview, type TwitchKind, type YouTubeKind } from "@/lib/link-preview";
 import { hexToHsv, hsvToHex } from "@/lib/palette";
 import { addHistoryItem } from "@/lib/history";
+import { useImageSize } from "@/lib/use-image-size";
 import {
   getAvailableTargets,
   SHARE_TARGETS,
@@ -172,6 +177,15 @@ export default function ResultScreen() {
   const [theme, setTheme] = useState<CardTheme>("editorial");
   const [bgMode, setBgMode] = useState<CardBackgroundMode>("image");
   const [bgColor, setBgColor] = useState("#0B0B12");
+  const [backgroundImage, setBackgroundImage] = useState<{
+    uri: string;
+    width: number;
+    height: number;
+  } | null>(null);
+  const [backgroundPreviewWidth, setBackgroundPreviewWidth] = useState(0);
+  const [eyedropperSize, setEyedropperSize] = useState({ width: 0, height: 0 });
+  const [eyedropperActive, setEyedropperActive] = useState(false);
+  const [samplingColor, setSamplingColor] = useState(false);
   const [blurStrength, setBlurStrength] = useState(8);
   const [vignetteStrength, setVignetteStrength] = useState(0);
   const [customHsv, setCustomHsv] = useState({ h: 240, s: 0.39, v: 0.07 });
@@ -311,6 +325,98 @@ export default function ResultScreen() {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setActiveTool(null);
     setEditing((v) => !v);
+  }
+
+  const sceneImage = backgroundImage?.uri || preview?.image || null;
+
+  const originalImageSize = useImageSize(preview?.image);
+  const sceneImageSize = backgroundImage || {
+    width: originalImageSize.width,
+    height: originalImageSize.height,
+  };
+
+  async function pickBackgroundImage() {
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ["images"],
+        allowsEditing: false,
+        quality: 1,
+      });
+      if (result.canceled) return;
+      const asset = result.assets[0];
+      setBackgroundImage({ uri: asset.uri, width: asset.width, height: asset.height });
+      setBgMode("image");
+      setEyedropperActive(false);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Unable to open the photo library");
+    }
+  }
+
+  async function sampleImageColor(
+    locationX: number,
+    locationY: number,
+    frameWidth: number,
+    frameHeight: number,
+  ) {
+    if (!sceneImage || frameWidth <= 0 || frameHeight <= 0 || samplingColor) return;
+    setSamplingColor(true);
+    try {
+      const sourceSize = backgroundImage || await new Promise<{
+        uri: string;
+        width: number;
+        height: number;
+      }>((resolve, reject) => {
+        Image.getSize(
+          sceneImage,
+          (width, height) => resolve({ uri: sceneImage, width, height }),
+          reject,
+        );
+      });
+      const imageRatio = sourceSize.width / sourceSize.height;
+      const frameRatio = frameWidth / frameHeight;
+      let renderedWidth = frameWidth;
+      let renderedHeight = frameHeight;
+      let offsetX = 0;
+      let offsetY = 0;
+      if (imageRatio > frameRatio) {
+        renderedHeight = frameWidth / imageRatio;
+        offsetY = (frameHeight - renderedHeight) / 2;
+      } else {
+        renderedWidth = frameHeight * imageRatio;
+        offsetX = (frameWidth - renderedWidth) / 2;
+      }
+      if (
+        locationX < offsetX || locationX > offsetX + renderedWidth ||
+        locationY < offsetY || locationY > offsetY + renderedHeight
+      ) return;
+      const originX = Math.min(
+        sourceSize.width - 1,
+        Math.max(0, Math.floor((locationX - offsetX) / renderedWidth * sourceSize.width)),
+      );
+      const originY = Math.min(
+        sourceSize.height - 1,
+        Math.max(0, Math.floor((locationY - offsetY) / renderedHeight * sourceSize.height)),
+      );
+      const crop = await ImageManipulator.manipulateAsync(
+        sceneImage,
+        [{ crop: { originX, originY, width: 1, height: 1 } }],
+        { base64: true, format: ImageManipulator.SaveFormat.PNG },
+      );
+      if (!crop.base64) return;
+      const binary = globalThis.atob(crop.base64);
+      const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+      const png = PNG.sync.read(bytes);
+      const hex = `#${[png.data[0], png.data[1], png.data[2]]
+        .map((channel: number) => channel.toString(16).padStart(2, "0"))
+        .join("")}`.toUpperCase();
+      applyCustomColor(hex);
+      setBgMode("color");
+      setEyedropperActive(false);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Unable to sample that color");
+    } finally {
+      setSamplingColor(false);
+    }
   }
 
   const customHex = hsvToHex(customHsv.h, customHsv.s, customHsv.v);
@@ -466,6 +572,7 @@ export default function ResultScreen() {
                 safeMode
                 bgMode={bgMode}
                 bgColor={bgColor}
+                backgroundImage={sceneImage}
                 blurRadius={blurStrength}
                 vignette={vignetteStrength / 100}
                 author={author}
@@ -671,12 +778,18 @@ export default function ResultScreen() {
                           Current image
                         </Text>
                         <View
-                          className="h-28 rounded-2xl overflow-hidden border border-zinc-200 bg-gray-100"
+                          onLayout={(event) => setBackgroundPreviewWidth(event.nativeEvent.layout.width)}
+                          className="rounded-2xl overflow-hidden border border-zinc-200 bg-gray-100"
+                          style={{
+                            height: sceneImageSize.width > 0 && sceneImageSize.height > 0 && backgroundPreviewWidth > 0
+                              ? Math.min(260, Math.max(112, backgroundPreviewWidth * sceneImageSize.height / sceneImageSize.width))
+                              : 112,
+                          }}
                         >
-                          {preview.image ? (
+                          {sceneImage ? (
                             <Image
-                              source={{ uri: preview.image }}
-                              resizeMode="cover"
+                              source={{ uri: sceneImage }}
+                              resizeMode="contain"
                               style={{ width: "100%", height: "100%" }}
                             />
                           ) : (
@@ -688,7 +801,7 @@ export default function ResultScreen() {
                             </View>
                           )}
                           <Pressable
-                            onPress={() => setBgMode("color")}
+                            onPress={pickBackgroundImage}
                             className="absolute right-2 bottom-2 px-3 py-2 rounded-full bg-white/95 border border-zinc-200 active:opacity-80"
                           >
                             <Text className="text-xs font-bold text-zinc-800">
@@ -699,6 +812,47 @@ export default function ResultScreen() {
                       </View>
                     ) : (
                       <View className="gap-3">
+                      {sceneImage ? (
+                        <View className="gap-2">
+                          <View className="flex-row items-center justify-between">
+                            <Text className="text-sm font-semibold text-zinc-700">Pick from image</Text>
+                            <Pressable
+                              onPress={() => setEyedropperActive((active) => !active)}
+                              className={`px-3 py-2 rounded-full border flex-row items-center gap-1.5 ${
+                                eyedropperActive
+                                  ? "bg-emerald-500 border-emerald-500"
+                                  : "bg-gray-100 border-zinc-200"
+                              }`}
+                            >
+                              <Pipette size={14} color={eyedropperActive ? "#ffffff" : "#52525b"} />
+                              <Text className={`text-xs font-bold ${eyedropperActive ? "text-white" : "text-zinc-700"}`}>
+                                {eyedropperActive ? "Tap image" : "Eyedropper"}
+                              </Text>
+                            </Pressable>
+                          </View>
+                          {eyedropperActive ? (
+                            <Pressable
+                              disabled={samplingColor}
+                              onPress={(event) => {
+                                const { locationX, locationY } = event.nativeEvent;
+                                sampleImageColor(locationX, locationY, eyedropperSize.width, eyedropperSize.height);
+                              }}
+                              onLayout={(event) => setEyedropperSize({
+                                width: event.nativeEvent.layout.width,
+                                height: event.nativeEvent.layout.height,
+                              })}
+                              className="h-[180px] rounded-2xl overflow-hidden border-2 border-emerald-500 bg-zinc-100"
+                            >
+                              <Image source={{ uri: sceneImage }} resizeMode="contain" style={{ width: "100%", height: "100%" }} />
+                              {samplingColor ? (
+                                <View className="absolute inset-0 items-center justify-center bg-black/20">
+                                  <ActivityIndicator color="#ffffff" />
+                                </View>
+                              ) : null}
+                            </Pressable>
+                          ) : null}
+                        </View>
+                      ) : null}
                       <ScrollView
                         horizontal
                         showsHorizontalScrollIndicator={false}

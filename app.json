@@ -40,6 +40,13 @@
           "imageWidth": 76
         }
       ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "LinkSnap uses your selected photo as the card background.",
+          "microphonePermission": false
+        }
+      ],
       "expo-sharing",
       [
         "react-native-share",
