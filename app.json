@@ -49,6 +49,15 @@
       ],
       "expo-sharing",
       [
+        "expo-media-library",
+        {
+          "savePhotosPermission": "Allow LinkSnap to save the card image to your photo library.",
+          "granularPermissions": [
+            "photo"
+          ]
+        }
+      ],
+      [
         "react-native-share",
         {
           "ios": [

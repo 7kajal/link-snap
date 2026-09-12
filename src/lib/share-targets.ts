@@ -4,9 +4,9 @@ import type { RefObject } from 'react';
 import type { View } from 'react-native';
 
 import { getFbAppId } from './config';
-import { captureCardAsImage, shareCard } from './share';
+import { captureCardAsImage, saveCardImage, shareCard } from './share';
 
-export type ShareTargetId = 'instagram' | 'whatsapp' | 'facebook' | 'more';
+export type ShareTargetId = 'instagram' | 'whatsapp' | 'facebook' | 'save' | 'more';
 
 export type ShareTarget = {
   id: ShareTargetId;
@@ -20,22 +20,23 @@ export const SHARE_TARGETS: ShareTarget[] = [
   { id: 'instagram', label: 'Instagram', color: '#E1306C' },
   { id: 'whatsapp', label: 'WhatsApp', color: '#25D366' },
   { id: 'facebook', label: 'Facebook', color: '#1877F2' },
+  { id: 'save', label: 'Save Image', color: '#71717A' },
   { id: 'more', label: 'More', color: '#10B981' },
 ];
 
-const ANDROID_PACKAGES: Record<Exclude<ShareTargetId, 'more'>, string[]> = {
+const ANDROID_PACKAGES: Record<Exclude<ShareTargetId, 'more' | 'save'>, string[]> = {
   instagram: ['com.instagram.android'],
   whatsapp: ['com.whatsapp', 'com.whatsapp.w4b'],
   facebook: ['com.facebook.katana'],
 };
 
-const IOS_SCHEMES: Record<Exclude<ShareTargetId, 'more'>, string[]> = {
+const IOS_SCHEMES: Record<Exclude<ShareTargetId, 'more' | 'save'>, string[]> = {
   instagram: ['instagram://'],
   whatsapp: ['whatsapp://'],
   facebook: ['fb://'],
 };
 
-async function isAppInstalled(target: Exclude<ShareTargetId, 'more'>): Promise<boolean> {
+async function isAppInstalled(target: Exclude<ShareTargetId, 'more' | 'save'>): Promise<boolean> {
   try {
     if (Platform.OS === 'android') {
       for (const pkg of ANDROID_PACKAGES[target]) {
@@ -65,7 +66,7 @@ async function isAppInstalled(target: Exclude<ShareTargetId, 'more'>): Promise<b
  */
 export async function getAvailableTargets(): Promise<Record<ShareTargetId, boolean>> {
   if (Platform.OS === 'web') {
-    return { instagram: false, whatsapp: false, facebook: false, more: true };
+    return { instagram: false, whatsapp: false, facebook: false, save: true, more: true };
   }
   const appId = getFbAppId();
   const [instagram, whatsapp, facebook] = await Promise.all([
@@ -77,6 +78,7 @@ export async function getAvailableTargets(): Promise<Record<ShareTargetId, boole
     instagram,
     whatsapp,
     facebook: facebook && appId.length > 0,
+    save: true,
     more: true,
   };
 }
@@ -126,6 +128,11 @@ export async function shareToTarget(
         message,
       });
       return 'shared';
+    }
+    if (target === 'save') {
+      // Save the rendered card to the device photo library (download on web).
+      const saved = await saveCardImage(ref);
+      return saved ? 'shared' : 'cancelled';
     }
     // 'more' → system share sheet (existing behavior).
     const ok = await shareCard(ref);

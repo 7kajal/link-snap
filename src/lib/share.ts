@@ -1,5 +1,6 @@
 import { Platform, Share } from 'react-native';
 import * as Sharing from 'expo-sharing';
+import { Asset, requestPermissionsAsync } from 'expo-media-library';
 import { captureRef } from 'react-native-view-shot';
 import type { RefObject } from 'react';
 import type { View } from 'react-native';
@@ -45,6 +46,30 @@ export async function shareCard(ref: RefObject<View | null>): Promise<boolean> {
   }
 
   await Share.share({ message: 'Link snap' });
+  return true;
+}
+
+export async function saveCardImage(ref: RefObject<View | null>): Promise<boolean> {
+  const uri = await captureCardAsImage(ref);
+  if (!uri) return false;
+
+  if (Platform.OS === 'web') {
+    const filename = 'link-snap.png';
+    const blob = await (await fetch(uri)).blob();
+    const objectUrl = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = objectUrl;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
+    return true;
+  }
+
+  const { status } = await requestPermissionsAsync(true, ['photo']);
+  if (status !== 'granted') return false;
+  await Asset.create(uri);
   return true;
 }
 
