@@ -10,6 +10,7 @@ import {
 import { ArrowBigUp, Check, GitFork, Heart, MapPin, MessageCircle, Music, Play, Star } from "lucide-react-native";
 import Svg, { Defs, RadialGradient, Rect, Stop } from "react-native-svg";
 import { domainFromUrl, getPalette, type Palette } from "@/lib/palette";
+import { useImageSize } from "@/lib/use-image-size";
 import {
   commerceStoreFromUrl,
   formatCompact,
@@ -49,6 +50,8 @@ export type LinkCardViewProps = ViewProps & {
   readMinutes?: string;
   dateText?: string;
   location?: string;
+  /** Site favicon (from parsed metadata) shown next to the publisher label. */
+  favicon?: string | null;
   /** Tweet/X extras (auto from oEmbed when available, else manual). */
   handle?: string;
   verified?: boolean;
@@ -442,6 +445,7 @@ const LinkCardView = forwardRef<View, LinkCardViewProps>(function LinkCardView(
     location,
     handle,
     verified,
+    favicon,
     likes,
     replies,
     avatarUrl,
@@ -653,15 +657,15 @@ const LinkCardView = forwardRef<View, LinkCardViewProps>(function LinkCardView(
       );
     }
     return (
-      <EditorialCard
+      <DynamicCard
         isStory={isStory}
+        cardWidth={width}
         title={title}
         excerpt={excerpt}
         authorName={authorName}
         minutes={minutes}
-        publisher={publisher}
         image={preview?.image || null}
-        accent={palette.accent}
+        favicon={favicon ?? preview?.favicon ?? null}
       />
     );
   };
@@ -1390,30 +1394,81 @@ function TweetCard({
 
 /* ---------------- Template A: white Medium-style editorial card ---------------- */
 
-function EditorialCard({
+/**
+ * Adaptive default card for generic (non-platform) links.
+ *
+ * - Any measurable image: laid out top-down as a full-width hero, preserving
+ *   its shape. Portrait images get more height than landscape images.
+ * - No image or an image that cannot be measured: compact text-first layout.
+ */
+function DynamicCard({
   isStory,
+  cardWidth,
   title,
   excerpt,
   authorName,
   minutes,
-  publisher,
   image,
-  accent,
+  favicon,
 }: {
   isStory: boolean;
+  cardWidth: number;
   title: string;
   excerpt: string;
   authorName: string;
   minutes: number;
-  publisher: string;
   image: string | null;
-  accent: string;
+  favicon: string | null;
 }) {
+  const size = useImageSize(image);
+  const hasSize = size.loaded && size.width > 0 && size.height > 0;
+
+  const footer = (
+    <View style={styles.edFooter}>
+      {favicon ? (
+        <Image source={{ uri: favicon }} style={styles.edAvatar} resizeMode="cover" />
+      ) : (
+        <View style={styles.edAvatar}>
+          <Text style={styles.edAvatarText}>{getInitials(authorName)}</Text>
+        </View>
+      )}
+      <Text style={styles.edAuthor} numberOfLines={1}>
+        {authorName}
+      </Text>
+      <Text style={styles.edReadTime} numberOfLines={1}>
+        {`${minutes} min read`}
+      </Text>
+    </View>
+  );
+
+  if (image && hasSize) {
+    const heroRatio = size.width / size.height;
+    // Actual usable card width: 88% scene − 1px borders − 16px padding each side.
+    const contentWidth = Math.max(120, cardWidth * CARD_W_RATIO - 34);
+    // Keep enough room for metadata while allowing portrait assets to grow.
+    const heroMax = Math.max(160, contentWidth * (heroRatio < 1 ? 1.05 : 0.72));
+    const heroHeight = Math.min(contentWidth / heroRatio, heroMax);
+
+    return (
+      <View style={styles.editorial}>
+        <View style={[styles.dynHeroWrap, styles.dynHeroFirst, { height: heroHeight }]}>
+          <Image source={{ uri: image }} style={styles.dynHero} resizeMode="contain" />
+        </View>
+        <Text style={[styles.edTitle, styles.dynTitleBelowHero]} numberOfLines={2}>
+          {title}
+        </Text>
+        {excerpt ? (
+          <Text style={[styles.edExcerpt, styles.dynExcerptBelowHero]} numberOfLines={2}>
+            {excerpt}
+          </Text>
+        ) : null}
+        {footer}
+      </View>
+    );
+  }
+
   return (
     <View style={styles.editorial}>
-      <Text style={[styles.edSite, { color: accent }]} numberOfLines={1}>
-        {publisher}
-      </Text>
       <Text style={styles.edTitle} numberOfLines={isStory ? 3 : 2}>
         {title}
       </Text>
@@ -1427,17 +1482,7 @@ function EditorialCard({
           <Image source={{ uri: image }} style={styles.edThumb} resizeMode="cover" />
         ) : null}
       </View>
-      <View style={styles.edFooter}>
-        <View style={styles.edAvatar}>
-          <Text style={styles.edAvatarText}>{getInitials(authorName)}</Text>
-        </View>
-        <Text style={styles.edAuthor} numberOfLines={1}>
-          {authorName}
-        </Text>
-        <Text style={styles.edReadTime} numberOfLines={1}>
-          {`${minutes} min read`}
-        </Text>
-      </View>
+      {footer}
     </View>
   );
 }
@@ -1562,12 +1607,26 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFFFFF",
     padding: 16,
   },
-  edSite: {
-    fontSize: 12,
-    fontWeight: "800",
-    letterSpacing: 0.8,
-    textTransform: "uppercase",
-    marginBottom: 6,
+  dynHeroWrap: {
+    width: "100%",
+    borderRadius: 12,
+    overflow: "hidden",
+    backgroundColor: "#F5F5F5",
+    marginTop: 10,
+  },
+  dynHeroFirst: {
+    marginTop: 0,
+  },
+  dynHero: {
+    width: "100%",
+    height: "100%",
+  },
+  dynTitleBelowHero: {
+    marginTop: 10,
+  },
+  dynExcerptBelowHero: {
+    marginTop: 10,
+    flex: 0,
   },
   edTitle: {
     fontSize: 19,

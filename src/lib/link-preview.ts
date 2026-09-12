@@ -11,6 +11,8 @@ export type LinkPreview = {
   title: string;
   description: string;
   image: string | null;
+  /** Best-effort site favicon (used by the generic card's publisher row). */
+  favicon: string | null;
   siteName: string | null;
   author: string | null;
   readingMinutes: number | null;
@@ -90,6 +92,7 @@ export type TwitchWorkerPayload = {
 /** Defaults for all platform-specific fields (spread into every constructor). */
 function platformDefaults() {
   return {
+    favicon: null as string | null,
     isTwitch: false,
     twitchKind: null as TwitchKind | null,
     twitchLogin: null as string | null,
@@ -1416,6 +1419,17 @@ export function parseOpenGraph(html: string, url: string): LinkPreview {
     return tag ? resolveUrl(tag[1], url) : null;
   };
 
+  const getFavicon = (): string | null => {
+    const relIcon =
+      html.match(/<link[^>]+rel=["'](?:shortcut\s+)?icon["'][^>]+href=["']([^"']+)["'][^>]*>/i)?.[1] ||
+      html.match(/<link[^>]+href=["']([^"']+)["'][^>]*rel=["'](?:shortcut\s+)?icon["'][^>]*>/i)?.[1] ||
+      html.match(/<link[^>]+rel=["']apple-touch-icon["'][^>]+href=["']([^"']+)["'][^>]*>/i)?.[1] ||
+      html.match(/<link[^>]+href=["']([^"']+)["'][^>]*rel=["']apple-touch-icon["'][^>]*>/i)?.[1];
+    if (!relIcon) return null;
+    const resolved = resolveUrl(relIcon, url);
+    return /^data:/i.test(resolved) ? null : resolved;
+  };
+
   const getSiteName = (): string | null => {
     return getMeta('property', 'og:site_name');
   };
@@ -1444,10 +1458,12 @@ export function parseOpenGraph(html: string, url: string): LinkPreview {
   const description = getDesc();
 
   return {
+    ...platformDefaults(),
     url,
     title,
     description,
     image: getImage(),
+    favicon: getFavicon(),
     siteName: getSiteName(),
     author: getAuthor(),
     readingMinutes: estimateReadingMinutes(`${title} ${description}`),
@@ -1466,7 +1482,6 @@ export function parseOpenGraph(html: string, url: string): LinkPreview {
     channelThumb: null,
     scheduledStart: null,
     concurrentViewers: null,
-    ...platformDefaults(),
   };
 }
 
