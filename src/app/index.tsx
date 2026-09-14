@@ -28,6 +28,7 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 
 import { BottomTabInset, shadowMd } from "@/constants/theme";
 import { clearHistory, useHistory } from "@/lib/history";
@@ -127,17 +128,21 @@ export default function HomeScreen() {
 
   return (
     <View className={`flex-1 ${isDarkMode ? "bg-[#09090b]" : "bg-zinc-50"}`}>
-      <SafeAreaView
-        edges={["top"]}
-        style={{ paddingBottom: BottomTabInset }}
-        className="flex-1"
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior="padding"
       >
-        <ScrollView
-          contentContainerStyle={{ paddingHorizontal: 20, paddingVertical: 16 }}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-          className="w-full max-w-lg self-center"
+        <SafeAreaView
+          edges={["top"]}
+          style={{ paddingBottom: BottomTabInset }}
+          className="flex-1"
         >
+          <ScrollView
+            contentContainerStyle={{ paddingHorizontal: 20, paddingVertical: 16 }}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+            className="w-full max-w-lg self-center"
+          >
           {/* Top Navigation Bar */}
           <View className="flex-row items-center justify-between mb-8">
             <View className="flex-row items-center">
@@ -495,7 +500,8 @@ export default function HomeScreen() {
             )}
           </View>
         </ScrollView>
-      </SafeAreaView>
+        </SafeAreaView>
+      </KeyboardAvoidingView>
     </View>
   );
 }

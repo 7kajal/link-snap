@@ -38,6 +38,7 @@ import Animated, {
   useAnimatedStyle,
   useSharedValue,
 } from "react-native-reanimated";
+import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { PNG } from "pngjs/browser";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -219,7 +220,7 @@ export default function ResultScreen() {
   const systemScheme = useColorScheme();
   const isDarkMode = systemScheme === "dark";
   const insets = useSafeAreaInsets();
-  const { height: windowHeight } = useWindowDimensions();
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
 
   const cardRef = useRef<View>(null);
   const [preview, setPreview] = useState<LinkPreview | null>(null);
@@ -248,6 +249,7 @@ export default function ResultScreen() {
   const [backgroundPreviewWidth, setBackgroundPreviewWidth] = useState(0);
   const [eyedropperActive, setEyedropperActive] = useState(false);
   const [cardFrame, setCardFrame] = useState({ w: 0, h: 0 });
+  const [shareRowHeight, setShareRowHeight] = useState(0);
   const [blurStrength, setBlurStrength] = useState(8);
   const [vignetteStrength, setVignetteStrength] = useState(0);
   const [customHsv, setCustomHsv] = useState({ h: 240, s: 0.39, v: 0.07 });
@@ -986,6 +988,23 @@ export default function ResultScreen() {
 
   const sceneImage = backgroundImage?.uri || preview?.image || null;
 
+  // Story card is 9:16 → shrink its width so it never slides under the pinned
+  // bottom bar on small screens.
+  const CARD_TOP_RESERVE = 90;
+  const CARD_BOTTOM_MARGIN = 16;
+  const SHARE_ROW_MIN_HEIGHT = 72;
+  const containerWidth = Math.min(windowWidth - 40, 512);
+  const maxCardHeight = Math.max(
+    280,
+    windowHeight -
+      insets.top -
+      insets.bottom -
+      CARD_TOP_RESERVE -
+      (shareRowHeight || SHARE_ROW_MIN_HEIGHT) -
+      CARD_BOTTOM_MARGIN,
+  );
+  const cardWidth = Math.min(containerWidth, maxCardHeight * (9 / 16));
+
   const originalImageSize = useImageSize(preview?.image);
   const sceneImageSize = backgroundImage || {
     width: originalImageSize.width,
@@ -1443,9 +1462,10 @@ export default function ResultScreen() {
           {/* Preview / Skeleton */}
           <View className="items-center justify-center my-2">
             {loading ? (
-              <SkeletonCard isDark={isDarkMode} />
+              <SkeletonCard isDark={isDarkMode} style={{ width: cardWidth }} />
             ) : preview ? (
               <View
+                style={{ width: cardWidth }}
                 onLayout={(event) =>
                   setCardFrame({
                     w: event.nativeEvent.layout.width,
@@ -1554,7 +1574,8 @@ export default function ResultScreen() {
         </ScrollView>
 
         {preview && !loading ? (
-          <View
+          <KeyboardAvoidingView
+            behavior="position"
             pointerEvents="box-none"
             style={{
               position: "absolute",
@@ -1564,6 +1585,7 @@ export default function ResultScreen() {
               maxWidth: 512,
               alignSelf: "center",
             }}
+            contentContainerStyle={{ alignSelf: "stretch" }}
           >
               {/* Editor sheet: panel grows out of the toolbar as one unit */}
               {editing ? (
@@ -2180,7 +2202,10 @@ export default function ResultScreen() {
 
               {/* Share row (edit mode hides it) */}
               {!editing ? (
-                <View className="flex-row justify-between gap-2 mt-1">
+                <View
+                  onLayout={(e) => setShareRowHeight(e.nativeEvent.layout.height)}
+                  className="flex-row justify-between gap-2 mt-1"
+                >
                   {SHARE_TARGETS.filter((t) => available[t.id]).map((t) => {
                     const busy = sharingTarget === t.id;
                     return (
@@ -2214,8 +2239,8 @@ export default function ResultScreen() {
                   })}
                 </View>
               ) : null}
-            </View>
-          ) : null}
+          </KeyboardAvoidingView>
+        ) : null}
       </SafeAreaView>
     </View>
   );
