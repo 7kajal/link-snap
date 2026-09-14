@@ -26,6 +26,7 @@ import {
 } from "lucide-react-native";
 import Svg, { Defs, RadialGradient, Rect, Stop } from "react-native-svg";
 import { domainFromUrl, getPalette, type Palette } from "@/lib/palette";
+import { SCENE_SCALE } from "@/lib/pixel-sampler";
 import { useImageSize } from "@/lib/use-image-size";
 import {
   commerceStoreFromUrl,
@@ -122,7 +123,9 @@ const CARD_MAX_H_RATIO = 0.84;
 /** Blurred image backdrop that fills the scene behind the card. Kept soft enough
  *  to read as the link's image, with a veil so the card stays legible. */
 const SCENE_BLUR = 8;
-const SCENE_SCALE = 1.6;
+/** Zoom factor applied to the scene backdrop behind the card. The eyedropper
+ *  sampler in pixel-sampler.ts uses this same constant. */
+export { SCENE_SCALE };
 const SCENE_VEIL = "rgba(10, 10, 18, 0.42)";
 
 const CARD_META: Record<CardTheme, { surface: string; radius: number; border: string }> = {

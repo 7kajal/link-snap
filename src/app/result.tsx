@@ -13,12 +13,11 @@ import {
   X,
 } from "lucide-react-native";
 import Svg, { Path } from "react-native-svg";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Image,
   LayoutAnimation,
-  PanResponder,
   Platform,
   Pressable,
   ScrollView,
@@ -32,6 +31,13 @@ import {
 import { LinearGradient } from "expo-linear-gradient";
 import * as ImageManipulator from "expo-image-manipulator";
 import * as ImagePicker from "expo-image-picker";
+import { Buffer } from "buffer";
+import { Gesture, GestureDetector } from "react-native-gesture-handler";
+import Animated, {
+  runOnJS,
+  useAnimatedStyle,
+  useSharedValue,
+} from "react-native-reanimated";
 import { PNG } from "pngjs/browser";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -40,6 +46,7 @@ import LinkCardView, { type CardBackgroundMode, type CardTheme } from "@/compone
 import { SkeletonCard } from "@/components/skeleton-card";
 import { fetchLinkPreview, type LinkPreview, type TwitchKind, type YouTubeKind } from "@/lib/link-preview";
 import { hexToHsv, hsvToHex } from "@/lib/palette";
+import { displayToSource, readTilePixel, rgbaToHex } from "@/lib/pixel-sampler";
 import { addHistoryItem } from "@/lib/history";
 import { useImageSize } from "@/lib/use-image-size";
 import {
@@ -110,6 +117,8 @@ if (
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
+const MemoLinkCardView = memo(LinkCardView);
+
 function ValueSlider({
   value,
   maximumValue,
@@ -121,49 +130,86 @@ function ValueSlider({
   step: number;
   onChange: (value: number) => void;
 }) {
-  const [width, setWidth] = useState(0);
-  const responder = useMemo(
-    () => {
-      const update = (x: number) => {
-        if (width <= 0) return;
-        const raw = Math.max(0, Math.min(1, x / width)) * maximumValue;
-        onChange(Math.round(raw / step) * step);
-      };
-      return PanResponder.create({
-        onStartShouldSetPanResponder: () => true,
-        onMoveShouldSetPanResponder: () => true,
-        onPanResponderGrant: (event) => update(event.nativeEvent.locationX),
-        onPanResponderMove: (event) => update(event.nativeEvent.locationX),
-      });
+  const widthSV = useSharedValue(0);
+  const pos = useSharedValue(0);
+  const last = useSharedValue(-1);
+
+  const fillStyle = useAnimatedStyle(() => ({ width: pos.value }));
+  const thumbStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: pos.value - 11 }],
+  }));
+
+  const applyX = useCallback(
+    (x: number) => {
+      "worklet";
+      const w = widthSV.value;
+      if (w <= 0) return;
+      const raw = Math.max(0, Math.min(1, x / w)) * maximumValue;
+      const next = Math.round(raw / step) * step;
+      // eslint-disable-next-line react-hooks/immutability
+      pos.value = (next / maximumValue) * w;
+      if (next !== last.value) {
+        // eslint-disable-next-line react-hooks/immutability
+        last.value = next;
+        runOnJS(onChange)(next);
+      }
     },
-    [width, maximumValue, step, onChange],
+    [maximumValue, step, onChange, widthSV, pos, last],
   );
-  const progress = `${(value / maximumValue) * 100}%` as `${number}%`;
+
+  const gesture = useMemo(
+    () =>
+      Gesture.Race(
+        Gesture.Tap().maxDistance(12).onEnd((event) => applyX(event.x)),
+        Gesture.Pan()
+          .activeOffsetX([-10, 10])
+          .failOffsetY([-12, 12])
+          .onUpdate((event) => applyX(event.x)),
+      ),
+    [applyX],
+  );
 
   return (
-    <View
-      onLayout={(event) => setWidth(event.nativeEvent.layout.width)}
-      {...responder.panHandlers}
-      style={{ height: 36, justifyContent: "center" }}
-    >
-      <View style={{ height: 6, borderRadius: 999, backgroundColor: "#E4E4E7" }}>
-        <View style={{ width: progress, height: 6, borderRadius: 999, backgroundColor: "#10B981" }} />
-      </View>
+    <GestureDetector gesture={gesture}>
       <View
-        style={{
-          position: "absolute",
-          left: progress,
-          width: 22,
-          height: 22,
-          marginLeft: -11,
-          borderRadius: 11,
-          backgroundColor: "#FFFFFF",
-          borderWidth: 3,
-          borderColor: "#10B981",
-          elevation: 2,
+        onLayout={(event) => {
+          const w = event.nativeEvent.layout.width;
+          // eslint-disable-next-line react-hooks/immutability
+          widthSV.value = w;
+          // eslint-disable-next-line react-hooks/immutability
+          pos.value = (value / maximumValue) * w;
         }}
-      />
-    </View>
+        style={{ height: 36, justifyContent: "center" }}
+      >
+        <View style={{ height: 6, borderRadius: 999, backgroundColor: "#E4E4E7" }}>
+          <Animated.View
+            style={{
+              height: 6,
+              borderRadius: 999,
+              backgroundColor: "#10B981",
+              ...fillStyle,
+            }}
+          />
+        </View>
+        <Animated.View
+          style={[
+            {
+              position: "absolute",
+              left: 0,
+              top: 7,
+              width: 22,
+              height: 22,
+              borderRadius: 11,
+              backgroundColor: "#FFFFFF",
+              borderWidth: 3,
+              borderColor: "#10B981",
+              elevation: 2,
+            },
+            thumbStyle,
+          ]}
+        />
+      </View>
+    </GestureDetector>
   );
 }
 
@@ -200,15 +246,12 @@ export default function ResultScreen() {
     height: number;
   } | null>(null);
   const [backgroundPreviewWidth, setBackgroundPreviewWidth] = useState(0);
-  const [eyedropperSize, setEyedropperSize] = useState({ width: 0, height: 0 });
   const [eyedropperActive, setEyedropperActive] = useState(false);
-  const [samplingColor, setSamplingColor] = useState(false);
+  const [cardFrame, setCardFrame] = useState({ w: 0, h: 0 });
   const [blurStrength, setBlurStrength] = useState(8);
   const [vignetteStrength, setVignetteStrength] = useState(0);
   const [customHsv, setCustomHsv] = useState({ h: 240, s: 0.39, v: 0.07 });
   const [hexText, setHexText] = useState("#0B0B12");
-  const [svSize, setSvSize] = useState({ w: 0, h: 0 });
-  const [hueWidth, setHueWidth] = useState(0);
 
   // Card detail overrides (empty = auto from link metadata)
   const [author, setAuthor] = useState("");
@@ -915,9 +958,30 @@ export default function ResultScreen() {
   }
 
   function toggleEditing() {
+    if (eyedropperActive) return;
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setActiveTool(null);
     setEditing((v) => !v);
+  }
+
+  function openEyedropper() {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    sourceSizeRef.current = null;
+    tileRef.current = null;
+    tileGenRef.current = 0;
+    dragActiveRef.current = false;
+    setDragActive(false);
+    previewLast.value = "";
+    setActiveTool(null);
+    setEditing(false);
+    setEyedropperActive(true);
+  }
+
+  function closeEyedropper() {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setEyedropperActive(false);
+    setActiveTool("bg");
+    setEditing(true);
   }
 
   const sceneImage = backgroundImage?.uri || preview?.image || null;
@@ -945,72 +1009,257 @@ export default function ResultScreen() {
     }
   }
 
-  async function sampleImageColor(
-    locationX: number,
-    locationY: number,
-    frameWidth: number,
-    frameHeight: number,
-  ) {
-    if (!sceneImage || frameWidth <= 0 || frameHeight <= 0 || samplingColor) return;
-    setSamplingColor(true);
+  // ---- Eyedropper: tile-based pixel sampler (pure JS reads while dragging) ----
+  type Tile = {
+    buf: Uint8Array;
+    ox: number;
+    oy: number;
+    tw: number;
+    th: number;
+  };
+  const sourceSizeRef = useRef<{ width: number; height: number } | null>(null);
+  const tileRef = useRef<{
+    buf: Uint8Array;
+    ox: number;
+    oy: number;
+    tw: number;
+    th: number;
+  } | null>(null);
+  const tileGenRef = useRef(0);
+  const tileBusyRef = useRef(false);
+  const dragActiveRef = useRef(false);
+  const [dragActive, setDragActive] = useState(false);
+  const pickX = useSharedValue(0);
+  const pickY = useSharedValue(0);
+  const previewColor = useSharedValue("#FFFFFF");
+  const previewLast = useSharedValue("");
+
+  async function resolveSourceSize() {
+    if (sourceSizeRef.current) return sourceSizeRef.current;
+    if (!sceneImage) return null;
+    const found = backgroundImage
+      ? { width: backgroundImage.width, height: backgroundImage.height }
+      : await new Promise<{ width: number; height: number } | null>((resolve) => {
+          Image.getSize(
+            sceneImage,
+            (width, height) => resolve({ width, height }),
+            () => resolve(null),
+          );
+        });
+    if (found) sourceSizeRef.current = found;
+    return found;
+  }
+
+  function samplePixelSync(x: number, y: number): string | null {
+    const size = sourceSizeRef.current;
+    const frame = cardFrame;
+    if (!size || frame.w <= 0 || frame.h <= 0) return null;
+    const { sourceX, sourceY } = displayToSource(
+      x,
+      y,
+      frame.w,
+      frame.h,
+      size.width,
+      size.height,
+    );
+    const tile = tileRef.current;
+    if (!tile) return null;
+    if (
+      sourceX < tile.ox - 8 ||
+      sourceX > tile.ox + tile.tw + 8 ||
+      sourceY < tile.oy - 8 ||
+      sourceY > tile.oy + tile.th + 8
+    ) {
+      queueTileLoad(sourceX, sourceY);
+      return null;
+    }
+    const { r, g, b } = readTilePixel(
+      tile.buf,
+      tile.tw,
+      tile.th,
+      sourceX - tile.ox,
+      sourceY - tile.oy,
+    );
+    return rgbaToHex(r, g, b);
+  }
+
+  function queueTileLoad(sourceX: number, sourceY: number) {
+    if (!sceneImage || tileBusyRef.current) return;
+    tileBusyRef.current = true;
+    loadTileAt(sourceX, sourceY, ++tileGenRef.current);
+  }
+
+  async function loadTileAt(
+    sourceX: number,
+    sourceY: number,
+    gen: number,
+  ): Promise<Tile | null> {
     try {
-      const sourceSize = backgroundImage || await new Promise<{
-        uri: string;
-        width: number;
-        height: number;
-      }>((resolve, reject) => {
-        Image.getSize(
-          sceneImage,
-          (width, height) => resolve({ uri: sceneImage, width, height }),
-          reject,
-        );
-      });
-      const imageRatio = sourceSize.width / sourceSize.height;
-      const frameRatio = frameWidth / frameHeight;
-      let renderedWidth = frameWidth;
-      let renderedHeight = frameHeight;
-      let offsetX = 0;
-      let offsetY = 0;
-      if (imageRatio > frameRatio) {
-        renderedHeight = frameWidth / imageRatio;
-        offsetY = (frameHeight - renderedHeight) / 2;
-      } else {
-        renderedWidth = frameHeight * imageRatio;
-        offsetX = (frameWidth - renderedWidth) / 2;
-      }
-      if (
-        locationX < offsetX || locationX > offsetX + renderedWidth ||
-        locationY < offsetY || locationY > offsetY + renderedHeight
-      ) return;
-      const originX = Math.min(
-        sourceSize.width - 1,
-        Math.max(0, Math.floor((locationX - offsetX) / renderedWidth * sourceSize.width)),
+      const size = await resolveSourceSize();
+      if (!size) return tileRef.current;
+      const tileSize = 224;
+      const tw = Math.min(tileSize, size.width);
+      const th = Math.min(tileSize, size.height);
+      const ox = Math.max(
+        0,
+        Math.min(size.width - tw, Math.round(sourceX) - Math.floor(tw / 2)),
       );
-      const originY = Math.min(
-        sourceSize.height - 1,
-        Math.max(0, Math.floor((locationY - offsetY) / renderedHeight * sourceSize.height)),
+      const oy = Math.max(
+        0,
+        Math.min(size.height - th, Math.round(sourceY) - Math.floor(th / 2)),
       );
       const crop = await ImageManipulator.manipulateAsync(
-        sceneImage,
-        [{ crop: { originX, originY, width: 1, height: 1 } }],
+        sceneImage as string,
+        [{ crop: { originX: ox, originY: oy, width: tw, height: th } }],
         { base64: true, format: ImageManipulator.SaveFormat.PNG },
       );
-      if (!crop.base64) return;
-      const binary = globalThis.atob(crop.base64);
-      const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
-      const png = PNG.sync.read(bytes);
-      const hex = `#${[png.data[0], png.data[1], png.data[2]]
-        .map((channel: number) => channel.toString(16).padStart(2, "0"))
-        .join("")}`.toUpperCase();
-      applyCustomColor(hex);
-      setBgMode("color");
-      setEyedropperActive(false);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Unable to sample that color");
+      if (!crop.base64 || gen !== tileGenRef.current) return tileRef.current;
+      const png = PNG.sync.read(Buffer.from(crop.base64, "base64"));
+      const tile: Tile = {
+        buf: new Uint8Array(png.data),
+        ox,
+        oy,
+        tw,
+        th,
+      };
+      tileRef.current = tile;
+      previewLast.value = "";
+      refreshPreview();
+      return tile;
+    } catch {
+      return tileRef.current;
     } finally {
-      setSamplingColor(false);
+      tileBusyRef.current = false;
     }
   }
+
+  function refreshPreview() {
+    if (!dragActiveRef.current) return;
+    const hex = samplePixelSync(pickX.value, pickY.value);
+    if (hex) {
+      previewLast.value = hex;
+      previewColor.value = hex;
+    }
+  }
+
+  async function primeForPick(x: number, y: number) {
+    const size = await resolveSourceSize();
+    if (!size) return;
+    const frame = cardFrame;
+    if (frame.w <= 0 || frame.h <= 0) return;
+    const { sourceX, sourceY } = displayToSource(
+      x,
+      y,
+      frame.w,
+      frame.h,
+      size.width,
+      size.height,
+    );
+    queueTileLoad(sourceX, sourceY);
+  }
+
+  function beginDrag(x: number, y: number) {
+    dragActiveRef.current = true;
+    setDragActive(true);
+    pickX.value = x;
+    pickY.value = y;
+    primeForPick(x, y);
+  }
+
+  function dragSample(x: number, y: number) {
+    const hex = samplePixelSync(x, y);
+    if (hex) {
+      previewLast.value = hex;
+      previewColor.value = hex;
+    }
+  }
+
+  function endDrag() {
+    dragActiveRef.current = false;
+    setDragActive(false);
+    previewLast.value = "";
+  }
+
+  function applyDragEnd(x: number, y: number) {
+    finalPick(x, y);
+  }
+
+  async function finalPick(x: number, y: number) {
+    const size = await resolveSourceSize();
+    const frame = cardFrame;
+    if (!size || frame.w <= 0 || frame.h <= 0) return;
+    const { sourceX, sourceY } = displayToSource(
+      x,
+      y,
+      frame.w,
+      frame.h,
+      size.width,
+      size.height,
+    );
+    let tile = tileRef.current;
+    if (
+      !tile ||
+      sourceX < tile.ox ||
+      sourceX >= tile.ox + tile.tw ||
+      sourceY < tile.oy ||
+      sourceY >= tile.oy + tile.th
+    ) {
+      if (tileBusyRef.current) {
+        await new Promise((r) => setTimeout(r, 16));
+      }
+      tile = await loadTileAt(sourceX, sourceY, ++tileGenRef.current);
+    }
+    if (!tile) return;
+    const { r, g, b } = readTilePixel(
+      tile.buf,
+      tile.tw,
+      tile.th,
+      sourceX - tile.ox,
+      sourceY - tile.oy,
+    );
+    const hex = rgbaToHex(r, g, b);
+    applyCustomColor(hex);
+    setBgMode("color");
+    setEyedropperActive(false);
+    setActiveTool("bg");
+    setEditing(true);
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+  }
+
+  const pickCircleStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateX: pickX.value - 22 },
+      { translateY: pickY.value - 22 - 52 },
+    ],
+    backgroundColor: previewColor.value,
+  }));
+
+  const pickGesture = useMemo(
+    () =>
+      Gesture.Race(
+        Gesture.Tap()
+          .maxDistance(12)
+          // eslint-disable-next-line react-hooks/refs
+          .onEnd((event) => runOnJS(finalPick)(event.x, event.y)),
+        Gesture.Pan()
+          .activateAfterLongPress(110)
+          // eslint-disable-next-line react-hooks/refs
+          .onStart((event) => runOnJS(beginDrag)(event.x, event.y))
+          // eslint-disable-next-line react-hooks/refs
+          .onUpdate((event) => {
+            // eslint-disable-next-line react-hooks/immutability
+            pickX.value = event.x;
+            // eslint-disable-next-line react-hooks/immutability
+            pickY.value = event.y;
+            runOnJS(dragSample)(event.x, event.y);
+          })
+          .onEnd(() => runOnJS(applyDragEnd)(pickX.value, pickY.value))
+          // eslint-disable-next-line react-hooks/refs
+          .onFinalize(() => runOnJS(endDrag)()),
+      ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [eyedropperActive, sceneImage, cardFrame.w, cardFrame.h],
+  );
 
   const customHex = hsvToHex(customHsv.h, customHsv.s, customHsv.v);
 
@@ -1024,60 +1273,99 @@ export default function ResultScreen() {
     return true;
   }
 
-  const svResponder = useMemo(
-    () =>
-      PanResponder.create({
-        onStartShouldSetPanResponder: () => true,
-        onMoveShouldSetPanResponder: () => true,
-        onPanResponderGrant: (e) => {
-          if (svSize.w <= 0 || svSize.h <= 0) return;
-          const s = Math.min(1, Math.max(0, e.nativeEvent.locationX / svSize.w));
-          const v =
-            1 - Math.min(1, Math.max(0, e.nativeEvent.locationY / svSize.h));
-          const hex = hsvToHex(customHsv.h, s, v);
-          setCustomHsv({ h: customHsv.h, s, v });
-          setBgColor(hex);
-          setHexText(hex);
-        },
-        onPanResponderMove: (e) => {
-          if (svSize.w <= 0 || svSize.h <= 0) return;
-          const s = Math.min(1, Math.max(0, e.nativeEvent.locationX / svSize.w));
-          const v =
-            1 - Math.min(1, Math.max(0, e.nativeEvent.locationY / svSize.h));
-          const hex = hsvToHex(customHsv.h, s, v);
-          setCustomHsv({ h: customHsv.h, s, v });
-          setBgColor(hex);
-          setHexText(hex);
-        },
-      }),
-    [svSize, customHsv.h],
+  const svW = useSharedValue(0);
+  const svH = useSharedValue(0);
+  const sSV = useSharedValue(customHsv.s);
+  const vSV = useSharedValue(customHsv.v);
+  const hSV = useSharedValue(customHsv.h);
+  const svLast = useSharedValue("");
+  const hueW = useSharedValue(0);
+  const hueLast = useSharedValue(-1);
+
+  useEffect(() => {
+    sSV.value = customHsv.s;
+    vSV.value = customHsv.v;
+    hSV.value = customHsv.h;
+  }, [customHsv, sSV, vSV, hSV]);
+
+  const onApplyColor = useCallback((h: number, s: number, v: number) => {
+    const hex = hsvToHex(h, s, v);
+    setCustomHsv({ h, s, v });
+    setBgColor(hex);
+    setHexText(hex);
+  }, []);
+
+  const applySV = useCallback(
+    (x: number, y: number) => {
+      "worklet";
+      const w = svW.value;
+      const h = svH.value;
+      if (w <= 0 || h <= 0) return;
+      const s = Math.min(1, Math.max(0, x / w));
+      const v = Math.min(1, Math.max(0, 1 - y / h));
+      // eslint-disable-next-line react-hooks/immutability
+      sSV.value = s;
+      // eslint-disable-next-line react-hooks/immutability
+      vSV.value = v;
+      const key = `${s.toFixed(3)}-${v.toFixed(3)}`;
+      if (key !== svLast.value) {
+        // eslint-disable-next-line react-hooks/immutability
+        svLast.value = key;
+        runOnJS(onApplyColor)(hSV.value, s, v);
+      }
+    },
+    [svW, svH, sSV, vSV, hSV, svLast, onApplyColor],
   );
 
-  const hueResponder = useMemo(
+  const svThumbStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateX: sSV.value * svW.value - 11 },
+      { translateY: (1 - vSV.value) * svH.value - 11 },
+    ],
+  }));
+
+  const svGesture = useMemo(
     () =>
-      PanResponder.create({
-        onStartShouldSetPanResponder: () => true,
-        onMoveShouldSetPanResponder: () => true,
-        onPanResponderGrant: (e) => {
-          if (hueWidth <= 0) return;
-          const h =
-            Math.min(1, Math.max(0, e.nativeEvent.locationX / hueWidth)) * 360;
-          const hex = hsvToHex(h, customHsv.s, customHsv.v);
-          setCustomHsv({ h, s: customHsv.s, v: customHsv.v });
-          setBgColor(hex);
-          setHexText(hex);
-        },
-        onPanResponderMove: (e) => {
-          if (hueWidth <= 0) return;
-          const h =
-            Math.min(1, Math.max(0, e.nativeEvent.locationX / hueWidth)) * 360;
-          const hex = hsvToHex(h, customHsv.s, customHsv.v);
-          setCustomHsv({ h, s: customHsv.s, v: customHsv.v });
-          setBgColor(hex);
-          setHexText(hex);
-        },
-      }),
-    [hueWidth, customHsv.s, customHsv.v],
+      Gesture.Race(
+        Gesture.Tap().maxDistance(12).onEnd((event) => applySV(event.x, event.y)),
+        Gesture.Pan()
+          .activateAfterLongPress(120)
+          .onUpdate((event) => applySV(event.x, event.y)),
+      ),
+    [applySV],
+  );
+
+  const applyHue = useCallback(
+    (x: number) => {
+      "worklet";
+      const w = hueW.value;
+      if (w <= 0) return;
+      const h = Math.min(1, Math.max(0, x / w)) * 360;
+      // eslint-disable-next-line react-hooks/immutability
+      hSV.value = h;
+      if (Math.round(h) !== hueLast.value) {
+        // eslint-disable-next-line react-hooks/immutability
+        hueLast.value = Math.round(h);
+        runOnJS(onApplyColor)(h, sSV.value, vSV.value);
+      }
+    },
+    [hueW, hSV, hueLast, sSV, vSV, onApplyColor],
+  );
+
+  const hueThumbStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: (hSV.value / 360) * hueW.value - 11 }],
+  }));
+
+  const hueGesture = useMemo(
+    () =>
+      Gesture.Race(
+        Gesture.Tap().maxDistance(12).onEnd((event) => applyHue(event.x)),
+        Gesture.Pan()
+          .activeOffsetX([-10, 10])
+          .failOffsetY([-12, 12])
+          .onUpdate((event) => applyHue(event.x)),
+      ),
+    [applyHue],
   );
 
   return (
@@ -1109,7 +1397,7 @@ export default function ResultScreen() {
                 strokeWidth={2.2}
               />
             </Pressable>
-            {preview && !loading ? (
+{preview && !loading && !eyedropperActive ? (
               <Pressable
                 onPress={toggleEditing}
                 hitSlop={8}
@@ -1157,7 +1445,15 @@ export default function ResultScreen() {
             {loading ? (
               <SkeletonCard isDark={isDarkMode} />
             ) : preview ? (
-              <LinkCardView
+              <View
+                onLayout={(event) =>
+                  setCardFrame({
+                    w: event.nativeEvent.layout.width,
+                    h: event.nativeEvent.layout.height,
+                  })
+                }
+              >
+              <MemoLinkCardView
                 ref={cardRef}
                 preview={preview}
                 theme={theme}
@@ -1205,6 +1501,54 @@ export default function ResultScreen() {
                 tagline={launchTagline}
                 upvotes={launchUpvotes}
               />
+              {eyedropperActive && sceneImage ? (
+                <>
+                  <GestureDetector gesture={pickGesture}>
+                    <View className="absolute inset-0" />
+                  </GestureDetector>
+                  <View
+                    pointerEvents="none"
+                    className="absolute top-3 inset-x-0 px-4 flex-row items-center justify-start"
+                  >
+                    <View className="px-3 py-1.5 rounded-full bg-black/55">
+                      <Text className="text-xs font-bold text-white">
+                        Tap or hold and drag
+                      </Text>
+                    </View>
+                  </View>
+                  <Pressable
+                    onPress={closeEyedropper}
+                    hitSlop={8}
+                    className="absolute top-3 right-4 w-8 h-8 items-center justify-center rounded-full bg-black/55"
+                  >
+                    <X size={16} color="#ffffff" strokeWidth={2.4} />
+                  </Pressable>
+                  {dragActive ? (
+                    <Animated.View
+                      pointerEvents="none"
+                      style={[
+                        {
+                          position: "absolute",
+                          left: 0,
+                          top: 0,
+                          width: 44,
+                          height: 44,
+                          borderRadius: 22,
+                          borderWidth: 3,
+                          borderColor: "#FFFFFF",
+                          shadowColor: "#000000",
+                          shadowOffset: { width: 0, height: 2 },
+                          shadowOpacity: 0.35,
+                          shadowRadius: 4,
+                          elevation: 5,
+                        },
+                        pickCircleStyle,
+                      ]}
+                    />
+                  ) : null}
+                </>
+              ) : null}
+              </View>
             ) : null}
           </View>
         </ScrollView>
@@ -1434,7 +1778,9 @@ export default function ResultScreen() {
                           <View className="flex-row items-center justify-between">
                             <Text className="text-sm font-semibold text-zinc-700">Pick from image</Text>
                             <Pressable
-                              onPress={() => setEyedropperActive((active) => !active)}
+                              onPress={() =>
+                                eyedropperActive ? closeEyedropper() : openEyedropper()
+                              }
                               className={`px-3 py-2 rounded-full border flex-row items-center gap-1.5 ${
                                 eyedropperActive
                                   ? "bg-emerald-500 border-emerald-500"
@@ -1443,31 +1789,10 @@ export default function ResultScreen() {
                             >
                               <Pipette size={14} color={eyedropperActive ? "#ffffff" : "#52525b"} />
                               <Text className={`text-xs font-bold ${eyedropperActive ? "text-white" : "text-zinc-700"}`}>
-                                {eyedropperActive ? "Tap image" : "Eyedropper"}
+                                {eyedropperActive ? "On" : "Eyedropper"}
                               </Text>
                             </Pressable>
                           </View>
-                          {eyedropperActive ? (
-                            <Pressable
-                              disabled={samplingColor}
-                              onPress={(event) => {
-                                const { locationX, locationY } = event.nativeEvent;
-                                sampleImageColor(locationX, locationY, eyedropperSize.width, eyedropperSize.height);
-                              }}
-                              onLayout={(event) => setEyedropperSize({
-                                width: event.nativeEvent.layout.width,
-                                height: event.nativeEvent.layout.height,
-                              })}
-                              className="h-[180px] rounded-2xl overflow-hidden border-2 border-emerald-500 bg-zinc-100"
-                            >
-                              <Image source={{ uri: sceneImage }} resizeMode="contain" style={{ width: "100%", height: "100%" }} />
-                              {samplingColor ? (
-                                <View className="absolute inset-0 items-center justify-center bg-black/20">
-                                  <ActivityIndicator color="#ffffff" />
-                                </View>
-                              ) : null}
-                            </Pressable>
-                          ) : null}
                         </View>
                       ) : null}
                       <ScrollView
@@ -1522,14 +1847,14 @@ export default function ResultScreen() {
                             />
                           </View>
                         </View>
+                      <GestureDetector gesture={svGesture}>
                       <View
-                        onLayout={(e) =>
-                          setSvSize({
-                            w: e.nativeEvent.layout.width,
-                            h: e.nativeEvent.layout.height,
-                          })
-                        }
-                        {...svResponder.panHandlers}
+                        onLayout={(e) => {
+                          // eslint-disable-next-line react-hooks/immutability
+                          svW.value = e.nativeEvent.layout.width;
+                          // eslint-disable-next-line react-hooks/immutability
+                          svH.value = e.nativeEvent.layout.height;
+                        }}
                         style={{
                           height: 148,
                           borderRadius: 12,
@@ -1561,30 +1886,35 @@ export default function ResultScreen() {
                             bottom: 0,
                           }}
                         />
-                        <View
-                          style={{
-                            position: "absolute",
-                            left: `${customHsv.s * 100}%`,
-                            top: `${(1 - customHsv.v) * 100}%`,
-                            width: 22,
-                            height: 22,
-                            marginLeft: -11,
-                            marginTop: -11,
-                            borderRadius: 11,
-                            backgroundColor: customHex,
-                            borderWidth: 3,
-                            borderColor: "#FFFFFF",
-                            shadowColor: "#000000",
-                            shadowOffset: { width: 0, height: 1 },
-                            shadowOpacity: 0.3,
-                            shadowRadius: 2,
-                            elevation: 3,
-                          }}
+                        <Animated.View
+                          style={[
+                            {
+                              position: "absolute",
+                              left: 0,
+                              top: 0,
+                              width: 22,
+                              height: 22,
+                              borderRadius: 11,
+                              backgroundColor: customHex,
+                              borderWidth: 3,
+                              borderColor: "#FFFFFF",
+                              shadowColor: "#000000",
+                              shadowOffset: { width: 0, height: 1 },
+                              shadowOpacity: 0.3,
+                              shadowRadius: 2,
+                              elevation: 3,
+                            },
+                            svThumbStyle,
+                          ]}
                         />
                       </View>
+                      </GestureDetector>
+                      <GestureDetector gesture={hueGesture}>
                       <View
-                        onLayout={(e) => setHueWidth(e.nativeEvent.layout.width)}
-                        {...hueResponder.panHandlers}
+                        onLayout={(e) => {
+                          // eslint-disable-next-line react-hooks/immutability
+                          hueW.value = e.nativeEvent.layout.width;
+                        }}
                         style={{ height: 28, borderRadius: 999, overflow: "hidden" }}
                       >
                         <LinearGradient
@@ -1607,27 +1937,29 @@ export default function ResultScreen() {
                             bottom: 0,
                           }}
                         />
-                        <View
-                          style={{
-                            position: "absolute",
-                            left: `${(customHsv.h / 360) * 100}%`,
-                            top: "50%",
-                            width: 22,
-                            height: 22,
-                            marginLeft: -11,
-                            marginTop: -11,
-                            borderRadius: 11,
-                            backgroundColor: customHex,
-                            borderWidth: 3,
-                            borderColor: "#FFFFFF",
-                            shadowColor: "#000000",
-                            shadowOffset: { width: 0, height: 1 },
-                            shadowOpacity: 0.3,
-                            shadowRadius: 2,
-                            elevation: 3,
-                          }}
+                        <Animated.View
+                          style={[
+                            {
+                              position: "absolute",
+                              left: 0,
+                              top: 3,
+                              width: 22,
+                              height: 22,
+                              borderRadius: 11,
+                              backgroundColor: customHex,
+                              borderWidth: 3,
+                              borderColor: "#FFFFFF",
+                              shadowColor: "#000000",
+                              shadowOffset: { width: 0, height: 1 },
+                              shadowOpacity: 0.3,
+                              shadowRadius: 2,
+                              elevation: 3,
+                            },
+                            hueThumbStyle,
+                          ]}
                         />
                       </View>
+                      </GestureDetector>
                       </View>
                     </View>
                     )}
