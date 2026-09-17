@@ -20,6 +20,7 @@ import { PNG } from "pngjs/browser";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Image,
   LayoutAnimation,
   Platform,
@@ -61,10 +62,12 @@ import {
 import { hexToHsv, hsvToHex } from "@/lib/palette";
 import { displayToSource, readTilePixel, rgbaToHex } from "@/lib/pixel-sampler";
 import {
+  getAvailableWhatsAppVariants,
   getAvailableTargets,
   SHARE_TARGETS,
   shareToTarget,
   type ShareTargetId,
+  type WhatsAppVariant,
 } from "@/lib/share-targets";
 import { useImageSize } from "@/lib/use-image-size";
 
@@ -1000,17 +1003,47 @@ export default function ResultScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function handleShare(target: ShareTargetId) {
+  async function performShare(
+    target: ShareTargetId,
+    whatsAppVariant?: WhatsAppVariant,
+  ) {
     if (!preview || sharingTarget) return;
     setSharingTarget(target);
     setError(null);
     try {
-      await shareToTarget(cardRef, target, `${preview.title}\n${preview.url}`);
+      await shareToTarget(
+        cardRef,
+        target,
+        `${preview.title}\n${preview.url}`,
+        whatsAppVariant,
+      );
     } catch (e) {
       setError(e instanceof Error ? e.message : "Sharing failed");
     } finally {
       setSharingTarget(null);
     }
+  }
+
+  async function handleShare(target: ShareTargetId) {
+    if (target !== "whatsapp" || Platform.OS !== "android") {
+      await performShare(target);
+      return;
+    }
+
+    const variants = await getAvailableWhatsAppVariants();
+    if (variants.length < 2) {
+      await performShare(target, variants[0] ?? "personal");
+      return;
+    }
+
+    Alert.alert("Share with", "Choose a WhatsApp app", [
+      { text: "Cancel", style: "cancel" },
+      { text: "WhatsApp", onPress: () => void performShare(target, "personal") },
+      {
+        text: "WhatsApp Business",
+        onPress: () => void performShare(target, "business"),
+      },
+    ]);
   }
 
   function selectTool(id: ToolId) {

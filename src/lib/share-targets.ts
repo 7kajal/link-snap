@@ -85,6 +85,27 @@ export async function getAvailableTargets(): Promise<Record<ShareTargetId, boole
 
 export type ShareOutcome = 'shared' | 'cancelled';
 
+export type WhatsAppVariant = 'personal' | 'business';
+
+export async function getAvailableWhatsAppVariants(): Promise<WhatsAppVariant[]> {
+  if (Platform.OS !== 'android') return ['personal'];
+
+  const [personal, business] = await Promise.all(
+    ANDROID_PACKAGES.whatsapp.map(async (pkg) => {
+      try {
+        return Boolean((await Share.isPackageInstalled(pkg))?.isInstalled);
+      } catch {
+        return false;
+      }
+    }),
+  );
+
+  return [
+    ...(personal ? (['personal'] as const) : []),
+    ...(business ? (['business'] as const) : []),
+  ];
+}
+
 function isUserCancel(err: unknown): boolean {
   const msg = err instanceof Error ? err.message : String(err ?? '');
   return /cancel|dismiss|did not share/i.test(msg);
@@ -98,6 +119,7 @@ export async function shareToTarget(
   ref: RefObject<View | null>,
   target: ShareTargetId,
   message?: string,
+  whatsAppVariant: WhatsAppVariant = 'personal',
 ): Promise<ShareOutcome> {
   const uri = await captureCardAsImage(ref);
   if (!uri) throw new Error('Could not capture the card image');
@@ -122,7 +144,10 @@ export async function shareToTarget(
     if (target === 'whatsapp') {
       // Opens WhatsApp's picker (includes My Status on supported versions).
       await Share.shareSingle({
-        social: Social.Whatsapp,
+        social:
+          whatsAppVariant === 'business'
+            ? Social.Whatsappbusiness
+            : Social.Whatsapp,
         url: uri,
         type: 'image/png',
         message,
