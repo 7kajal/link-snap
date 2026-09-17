@@ -24,19 +24,18 @@ import {
   ScrollView,
   Text,
   TextInput,
-  useColorScheme,
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 
 import { BottomTabInset, shadowMd } from "@/constants/theme";
+import { useAppAppearance } from "@/contexts/appearance-context";
 import { clearHistory, useHistory } from "@/lib/history";
 
 export default function HomeScreen() {
   const router = useRouter();
-  const systemScheme = useColorScheme();
-  const [isDarkMode, setIsDarkMode] = useState(systemScheme === "dark");
+  const { isDarkMode, toggleDarkMode } = useAppAppearance();
 
   const [url, setUrl] = useState("");
   const [isFocused, setIsFocused] = useState(false);
@@ -171,7 +170,7 @@ export default function HomeScreen() {
             </View>
 
             <Pressable
-              onPress={() => setIsDarkMode(!isDarkMode)}
+              onPress={toggleDarkMode}
               accessibilityLabel="Toggle Dark Mode"
               accessibilityRole="button"
               className={`w-11 h-11 items-center justify-center rounded-2xl border ${

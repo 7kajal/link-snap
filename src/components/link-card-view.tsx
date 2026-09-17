@@ -1,4 +1,4 @@
-import { forwardRef, useState, type ReactNode } from "react";
+import { createContext, forwardRef, useContext, useState, type ReactNode } from "react";
 import {
   Image,
   StyleSheet,
@@ -14,6 +14,7 @@ import {
   Check,
   Clock,
   Download,
+  Eye,
   GitFork,
   Heart,
   MapPin,
@@ -44,6 +45,43 @@ import {
 export type CardTheme = "editorial" | "spotlight" | "tweet" | "youtube" | "clip" | "post" | "music" | "repo" | "commerce" | "stream" | "linkedin" | "indeed" | "zomato" | "swiggy" | "pinterest" | "app" | "stay" | "game" | "book" | "launch";
 export type AspectRatio = "story" | "square";
 export type CardBackgroundMode = "image" | "color";
+export type CardColorScheme = "light" | "dark";
+
+type CardColors = {
+  surface: string;
+  primary: string;
+  secondary: string;
+  muted: string;
+  subtle: string;
+  divider: string;
+  border: string;
+};
+
+const LIGHT_CARD_COLORS: CardColors = {
+  surface: "#FFFFFF",
+  primary: "#111111",
+  secondary: "#444444",
+  muted: "#717171",
+  subtle: "#F3F4F6",
+  divider: "#E5E7EB",
+  border: "rgba(0, 0, 0, 0.08)",
+};
+
+const DARK_CARD_COLORS: CardColors = {
+  surface: "#151515",
+  primary: "#F5F5F5",
+  secondary: "#D4D4D4",
+  muted: "#A3A3A3",
+  subtle: "#27272A",
+  divider: "#3F3F46",
+  border: "rgba(255, 255, 255, 0.15)",
+};
+
+const CardColorsContext = createContext<CardColors>(LIGHT_CARD_COLORS);
+
+function useCardColors() {
+  return useContext(CardColorsContext);
+}
 
 export type LinkCardViewProps = ViewProps & {
   preview?: LinkPreview | null;
@@ -52,6 +90,8 @@ export type LinkCardViewProps = ViewProps & {
   theme?: CardTheme;
   aspectRatio?: AspectRatio;
   safeMode?: boolean;
+  /** Light or dark styling for templates that support both appearances. */
+  colorScheme?: CardColorScheme;
   /** Scene background mode: "image" uses a blurred backdrop, "color" uses a solid fill. */
   bgMode?: CardBackgroundMode;
   /** Solid background color when bgMode is "color". */
@@ -62,6 +102,8 @@ export type LinkCardViewProps = ViewProps & {
   blurRadius?: number;
   /** Vignette strength over the scene background, 0 (off) to 1 (max). */
   vignette?: number;
+  /** When true, hides all engagement counts (views/watching/likes/comments/etc.). */
+  hideCounts?: boolean;
   /** Manual overrides from the studio controls (take precedence over parsed meta). */
   author?: string;
   readMinutes?: string;
@@ -212,8 +254,17 @@ function SceneBackdrop({
 
 /** Compact embed-style card floating over the blurred scene. Height is driven
  *  by content (chat-embed look), capped so it always fits the scene. */
-function CardShell({ theme, children }: { theme: CardTheme; children: ReactNode }) {
+function CardShell({
+  theme,
+  colorScheme,
+  children,
+}: {
+  theme: CardTheme;
+  colorScheme: CardColorScheme;
+  children: ReactNode;
+}) {
   const meta = CARD_META[theme];
+  const colors = colorScheme === "dark" ? DARK_CARD_COLORS : LIGHT_CARD_COLORS;
   return (
     <View
       style={[
@@ -222,17 +273,21 @@ function CardShell({ theme, children }: { theme: CardTheme; children: ReactNode 
           width: `${CARD_W_RATIO * 100}%`,
           maxHeight: `${CARD_MAX_H_RATIO * 100}%`,
           borderRadius: meta.radius,
-          backgroundColor: meta.surface,
+          backgroundColor: colors.surface,
         },
       ]}
     >
       <View
         style={[
           styles.shellSurface,
-          { borderRadius: meta.radius, backgroundColor: meta.surface, borderColor: meta.border },
+          {
+            borderRadius: meta.radius,
+            backgroundColor: colors.surface,
+            borderColor: colors.border,
+          },
         ]}
       >
-        {children}
+        <CardColorsContext.Provider value={colors}>{children}</CardColorsContext.Provider>
       </View>
     </View>
   );
@@ -498,11 +553,13 @@ const LinkCardView = forwardRef<View, LinkCardViewProps>(function LinkCardView(
     theme = "editorial",
     aspectRatio = "story",
     safeMode = false,
+    colorScheme = "light",
     bgMode = "image",
     bgColor = "#0B0B12",
     backgroundImage,
     blurRadius = SCENE_BLUR,
     vignette = 0,
+    hideCounts = false,
     author,
     readMinutes,
     dateText,
@@ -575,7 +632,7 @@ const LinkCardView = forwardRef<View, LinkCardViewProps>(function LinkCardView(
     youtubeKind || preview?.youtubeKind || youtubeKindFromUrl(url);
   const ytDuration =
     parseDurationInput(duration) ?? preview?.durationSec ?? null;
-  const ytViews = resolveCount(views, preview?.viewCount);
+  const viewsResolved = resolveCount(views, preview?.viewCount);
   const ytWatching = (watching || "").trim() || null;
   const ytScheduled =
     ytWatching ||
@@ -653,6 +710,7 @@ const LinkCardView = forwardRef<View, LinkCardViewProps>(function LinkCardView(
           viewers={stViewers}
           durationSec={stDuration}
           age={timeAgo(preview?.publishedAt || null)}
+          hideCounts={hideCounts}
         />
       );
     }
@@ -666,6 +724,7 @@ const LinkCardView = forwardRef<View, LinkCardViewProps>(function LinkCardView(
           reposts={liReposts}
           likes={likeCount}
           avatar={avatar}
+          hideCounts={hideCounts}
         />
       );
     }
@@ -817,9 +876,11 @@ const LinkCardView = forwardRef<View, LinkCardViewProps>(function LinkCardView(
           selftext={excerpt}
           image={preview?.image || null}
           authorName={authorName}
+          views={viewsResolved}
           score={rdScore}
           comments={rdComments}
           age={timeAgo(preview?.publishedAt || null)}
+          hideCounts={hideCounts}
         />
       );
     }
@@ -830,8 +891,10 @@ const LinkCardView = forwardRef<View, LinkCardViewProps>(function LinkCardView(
           authorName={authorName}
           handle={tweetHandle}
           poster={preview?.image || null}
+          views={viewsResolved}
           likes={likeCount}
           comments={replyCount}
+          hideCounts={hideCounts}
         />
       );
     }
@@ -845,11 +908,13 @@ const LinkCardView = forwardRef<View, LinkCardViewProps>(function LinkCardView(
           thumb={preview?.image || null}
           channelAvatar={avatar}
           durationSec={ytDuration}
-          views={ytViews}
+          views={viewsResolved}
           age={timeAgo(preview?.publishedAt || null)}
           scheduledLabel={ytScheduled}
           watchingLabel={ytWatching}
           concurrentViewers={preview?.concurrentViewers ?? null}
+          hideCounts={hideCounts}
+          colorScheme={colorScheme}
         />
       );
     }
@@ -861,9 +926,11 @@ const LinkCardView = forwardRef<View, LinkCardViewProps>(function LinkCardView(
           handle={tweetHandle}
           verified={tweetVerified}
           timeLabel={dateLabel}
+          views={viewsResolved}
           likeCount={likeCount}
           replyCount={replyCount}
           avatar={avatar}
+          hideCounts={hideCounts}
         />
       );
     }
@@ -907,7 +974,7 @@ const LinkCardView = forwardRef<View, LinkCardViewProps>(function LinkCardView(
         <>
           <SceneBackdrop image={backgroundImage ?? preview?.image ?? null} palette={palette} mode={bgMode} solidColor={bgColor} blur={blurRadius} vignette={vignette} />
           <View style={[styles.scene, { paddingTop: safeTop, paddingBottom: safeBottom }]}>
-            <CardShell theme={theme}>{renderTheme()}</CardShell>
+            <CardShell theme={theme} colorScheme={colorScheme}>{renderTheme()}</CardShell>
           </View>
         </>
       ) : null}
@@ -922,28 +989,33 @@ function ClipCard({
   authorName,
   handle,
   poster,
+  views,
   likes,
   comments,
+  hideCounts,
 }: {
   caption: string;
   authorName: string;
   handle: string | null;
   poster: string | null;
+  views: number | null;
   likes: number | null;
   comments: number | null;
+  hideCounts: boolean;
 }) {
+  const colors = useCardColors();
   return (
-    <View style={styles.clip}>
+    <View style={[styles.clip, { backgroundColor: colors.surface }]}>
       <View style={styles.clipProviderRow}>
         <View style={styles.clipDot} />
-        <Text style={styles.clipProvider} numberOfLines={1}>
+        <Text style={[styles.clipProvider, { color: colors.muted }]} numberOfLines={1}>
           TikTok
         </Text>
-        <Text style={styles.clipAuthor} numberOfLines={1}>
+        <Text style={[styles.clipAuthor, { color: colors.primary }]} numberOfLines={1}>
           @{handle || authorName.replace(/^@/, "")}
         </Text>
       </View>
-      <Text style={styles.clipCaption} numberOfLines={3}>
+      <Text style={[styles.clipCaption, { color: colors.primary }]} numberOfLines={3}>
         {caption}
       </Text>
       {poster ? (
@@ -951,16 +1023,28 @@ function ClipCard({
           <Image source={{ uri: poster }} style={styles.clipPoster} resizeMode="cover" />
         </View>
       ) : null}
-      <View style={styles.clipFooter}>
-        <View style={styles.clipStat}>
-          <Heart size={14} color="#FE2C55" fill="#FE2C55" strokeWidth={2} />
-          {likes != null ? <Text style={styles.clipStatText}>{formatCompact(likes)}</Text> : null}
+      {!hideCounts && (views != null || likes != null || comments != null) ? (
+        <View style={styles.clipFooter}>
+          {views != null ? (
+            <View style={styles.clipStat}>
+              <Play size={14} color="#FE2C55" fill="#FE2C55" strokeWidth={2} />
+              <Text style={[styles.clipStatText, { color: colors.secondary }]}>{formatCompact(views)}</Text>
+            </View>
+          ) : null}
+          {likes != null ? (
+            <View style={styles.clipStat}>
+              <Heart size={14} color="#FE2C55" fill="#FE2C55" strokeWidth={2} />
+              <Text style={[styles.clipStatText, { color: colors.secondary }]}>{formatCompact(likes)}</Text>
+            </View>
+          ) : null}
+          {comments != null ? (
+            <View style={styles.clipStat}>
+              <MessageCircle size={14} color="#9E9E9E" strokeWidth={2} />
+              <Text style={[styles.clipStatText, { color: colors.secondary }]}>{formatCompact(comments)}</Text>
+            </View>
+          ) : null}
         </View>
-        <View style={styles.clipStat}>
-          <MessageCircle size={14} color="#9E9E9E" strokeWidth={2} />
-          {comments != null ? <Text style={styles.clipStatText}>{formatCompact(comments)}</Text> : null}
-        </View>
-      </View>
+      ) : null}
     </View>
   );
 }
@@ -973,41 +1057,46 @@ function PostCard({
   selftext,
   image,
   authorName,
+  views,
   score,
   comments,
   age,
+  hideCounts,
 }: {
   subreddit: string | null;
   title: string;
   selftext: string;
   image: string | null;
   authorName: string;
+  views: number | null;
   score: number | null;
   comments: number | null;
   age: string | null;
+  hideCounts: boolean;
 }) {
+  const colors = useCardColors();
   const hasImage = !!image;
   const hasText = selftext.trim().length > 0;
   return (
-    <View style={styles.post}>
+    <View style={[styles.post, { backgroundColor: colors.surface }]}>
       <View style={styles.postSubRow}>
         <View style={styles.postSubDot}>
           <Text style={styles.postSubDotText}>r/</Text>
         </View>
-        <Text style={styles.postSub} numberOfLines={1}>
+        <Text style={[styles.postSub, { color: colors.primary }]} numberOfLines={1}>
           r/{subreddit || "reddit"}
         </Text>
         {age ? (
-          <Text style={styles.postAge} numberOfLines={1}>
+          <Text style={[styles.postAge, { color: colors.muted }]} numberOfLines={1}>
             • {age}
           </Text>
         ) : null}
       </View>
-      <Text style={styles.postTitle} numberOfLines={hasImage ? 2 : 3}>
+      <Text style={[styles.postTitle, { color: colors.primary }]} numberOfLines={hasImage ? 2 : 3}>
         {title}
       </Text>
       {hasText ? (
-        <Text style={styles.postSelf} numberOfLines={hasImage ? 2 : 4}>
+        <Text style={[styles.postSelf, { color: colors.secondary }]} numberOfLines={hasImage ? 2 : 4}>
           {selftext}
         </Text>
       ) : null}
@@ -1017,19 +1106,25 @@ function PostCard({
         </View>
       ) : null}
       <View style={styles.postFooter}>
-        {score != null ? (
-          <View style={styles.postPill}>
+        {!hideCounts && views != null ? (
+          <View style={[styles.postPill, { backgroundColor: colors.subtle }]}>
+            <Eye size={14} color="#FF4500" strokeWidth={2} />
+            <Text style={[styles.postPillText, { color: colors.primary }]}>{formatCompact(views)}</Text>
+          </View>
+        ) : null}
+        {!hideCounts && score != null ? (
+          <View style={[styles.postPill, { backgroundColor: colors.subtle }]}>
             <ArrowBigUp size={14} color="#FF4500" strokeWidth={2.2} />
-            <Text style={styles.postPillText}>{formatCompact(score)}</Text>
+            <Text style={[styles.postPillText, { color: colors.primary }]}>{formatCompact(score)}</Text>
           </View>
         ) : null}
-        {comments != null ? (
-          <View style={styles.postPill}>
+        {!hideCounts && comments != null ? (
+          <View style={[styles.postPill, { backgroundColor: colors.subtle }]}>
             <MessageCircle size={13} color="#7C7C7C" strokeWidth={2} />
-            <Text style={styles.postPillText}>{formatCompact(comments)}</Text>
+            <Text style={[styles.postPillText, { color: colors.primary }]}>{formatCompact(comments)}</Text>
           </View>
         ) : null}
-        <Text style={styles.postAuthor} numberOfLines={1}>
+        <Text style={[styles.postAuthor, { color: colors.muted }]} numberOfLines={1}>
           u/{authorName.replace(/^u\//, "")}
         </Text>
       </View>
@@ -1059,11 +1154,12 @@ function MusicCard({
   artist: string;
   cover: string | null;
 }) {
+  const colors = useCardColors();
   return (
-    <View style={styles.music}>
+    <View style={[styles.music, { backgroundColor: colors.surface }]}>
       <View style={styles.musicProviderRow}>
         <View style={styles.musicDot} />
-        <Text style={styles.musicProvider} numberOfLines={1}>
+        <Text style={[styles.musicProvider, { color: colors.muted }]} numberOfLines={1}>
           Spotify
         </Text>
         {kind ? (
@@ -1081,10 +1177,10 @@ function MusicCard({
           </View>
         )}
         <View style={styles.musicCol}>
-          <Text style={styles.musicTitle} numberOfLines={2}>
+          <Text style={[styles.musicTitle, { color: colors.primary }]} numberOfLines={2}>
             {title}
           </Text>
-          <Text style={styles.musicArtist} numberOfLines={1}>
+          <Text style={[styles.musicArtist, { color: colors.secondary }]} numberOfLines={1}>
             {artist}
           </Text>
         </View>
@@ -1093,7 +1189,7 @@ function MusicCard({
         <View style={styles.musicLogo}>
           <Music size={10} color="#000000" strokeWidth={2.5} />
         </View>
-        <Text style={styles.musicFooterText}>Spotify</Text>
+        <Text style={[styles.musicFooterText, { color: colors.muted }]}>Spotify</Text>
       </View>
     </View>
   );
@@ -1118,9 +1214,10 @@ function RepoCard({
   language: string | null;
   updated: string | null;
 }) {
+  const colors = useCardColors();
   const [owner, repo] = fullName.includes("/") ? fullName.split("/", 2) : ["", fullName];
   return (
-    <View style={styles.repo}>
+    <View style={[styles.repo, { backgroundColor: colors.surface }]}>
       <View style={styles.repoHeader}>
         {avatar ? (
           <Image source={{ uri: avatar }} style={styles.repoAvatar} resizeMode="cover" />
@@ -1131,7 +1228,7 @@ function RepoCard({
         )}
         <View style={styles.repoNames}>
           {owner ? (
-            <Text style={styles.repoOwner} numberOfLines={1}>
+            <Text style={[styles.repoOwner, { color: colors.muted }]} numberOfLines={1}>
               {owner} /
             </Text>
           ) : null}
@@ -1139,36 +1236,36 @@ function RepoCard({
             {repo}
           </Text>
         </View>
-        <View style={styles.repoPublic}>
-          <Text style={styles.repoPublicText}>Public</Text>
+        <View style={[styles.repoPublic, { borderColor: colors.divider }]}>
+          <Text style={[styles.repoPublicText, { color: colors.muted }]}>Public</Text>
         </View>
       </View>
       {description ? (
-        <Text style={styles.repoDesc} numberOfLines={3}>
+        <Text style={[styles.repoDesc, { color: colors.secondary }]} numberOfLines={3}>
           {description}
         </Text>
       ) : null}
-      <View style={styles.repoFooter}>
+      <View style={[styles.repoFooter, { borderTopColor: colors.divider }]}>
         {language ? (
           <View style={styles.repoStat}>
             <View style={[styles.repoLangDot, { backgroundColor: LANG_COLORS[language] || "#8B949E" }]} />
-            <Text style={styles.repoStatText}>{language}</Text>
+            <Text style={[styles.repoStatText, { color: colors.secondary }]}>{language}</Text>
           </View>
         ) : null}
         {stars != null ? (
           <View style={styles.repoStat}>
             <Star size={13} color="#E3B341" fill="#E3B341" strokeWidth={1.5} />
-            <Text style={styles.repoStatText}>{formatCompact(stars)}</Text>
+            <Text style={[styles.repoStatText, { color: colors.secondary }]}>{formatCompact(stars)}</Text>
           </View>
         ) : null}
         {forks != null ? (
           <View style={styles.repoStat}>
             <GitFork size={13} color="#8B949E" strokeWidth={2} />
-            <Text style={styles.repoStatText}>{formatCompact(forks)}</Text>
+            <Text style={[styles.repoStatText, { color: colors.secondary }]}>{formatCompact(forks)}</Text>
           </View>
         ) : null}
         {updated ? (
-          <Text style={styles.repoUpdated} numberOfLines={1}>
+          <Text style={[styles.repoUpdated, { color: colors.muted }]} numberOfLines={1}>
             {updated}
           </Text>
         ) : null}
@@ -1191,6 +1288,7 @@ function StreamCard({
   viewers,
   durationSec,
   age,
+  hideCounts,
 }: {
   kind: TwitchKind;
   isStory: boolean;
@@ -1203,32 +1301,41 @@ function StreamCard({
   viewers: number | null;
   durationSec: number | null;
   age: string | null;
+  hideCounts: boolean;
 }) {
+  const colors = useCardColors();
   const live = kind === "live";
+  const showLabelledCounts = !hideCounts;
   const sub =
     live
       ? [
-          viewers != null ? `${formatCompact(viewers)} watching` : "Live now",
+          viewers != null && showLabelledCounts
+            ? `${formatCompact(viewers)} watching`
+            : showLabelledCounts
+              ? "Live now"
+              : null,
           age,
         ]
           .filter(Boolean)
-          .join(" • ")
+          .join(" • ") || null
       : kind === "channel"
         ? login
           ? `twitch.tv/${login}`
           : "Twitch channel"
         : [
-            viewers != null ? `${formatCompact(viewers)} views` : null,
+            viewers != null && showLabelledCounts
+              ? `${formatCompact(viewers)} views`
+              : null,
             age,
           ]
             .filter(Boolean)
             .join(" • ") || null;
 
   return (
-    <View style={styles.st}>
+    <View style={[styles.st, { backgroundColor: colors.surface }]}>
       <View style={styles.stProviderRow}>
         <View style={styles.stDot} />
-        <Text style={styles.stProvider} numberOfLines={1}>
+        <Text style={[styles.stProvider, { color: colors.muted }]} numberOfLines={1}>
           Twitch
         </Text>
         {live ? (
@@ -1255,7 +1362,7 @@ function StreamCard({
           </View>
         )}
         <View style={styles.stStreamerCol}>
-          <Text style={styles.stStreamer} numberOfLines={1}>
+          <Text style={[styles.stStreamer, { color: colors.primary }]} numberOfLines={1}>
             {streamer}
           </Text>
           {game ? (
@@ -1266,12 +1373,12 @@ function StreamCard({
         </View>
       </View>
       {title ? (
-        <Text style={styles.stTitle} numberOfLines={isStory ? 3 : 2}>
+        <Text style={[styles.stTitle, { color: colors.primary }]} numberOfLines={isStory ? 3 : 2}>
           {title}
         </Text>
       ) : null}
       {sub ? (
-        <Text style={styles.stSub} numberOfLines={1}>
+        <Text style={[styles.stSub, { color: colors.muted }]} numberOfLines={1}>
           {sub}
         </Text>
       ) : null}
@@ -1310,6 +1417,7 @@ function CommerceCard({
   reviews: number | null;
   seller: string | null;
 }) {
+  const colors = useCardColors();
   const meta = STORE_DESIGN[store];
   const pNum = parsePriceNumber(price);
   const mNum = parsePriceNumber(mrp);
@@ -1317,7 +1425,7 @@ function CommerceCard({
   const fullStars = rating != null ? Math.round(rating) : 0;
 
   return (
-    <View style={styles.com}>
+    <View style={[styles.com, { backgroundColor: colors.surface }]}>
       {image ? (
         <View style={styles.comImageWrap}>
           <Image source={{ uri: image }} style={styles.comImage} resizeMode="cover" />
@@ -1326,18 +1434,18 @@ function CommerceCard({
       <View style={[styles.comStore, { backgroundColor: meta.color }]}>
         <Text style={[styles.comStoreText, meta.wordmarkStyle]}>{meta.label}</Text>
       </View>
-      <Text style={styles.comTitle} numberOfLines={2}>
+      <Text style={[styles.comTitle, { color: colors.primary }]} numberOfLines={2}>
         {title}
       </Text>
       {price || mrp ? (
         <View style={styles.comPriceRow}>
           {price ? (
-            <Text style={[styles.comPrice, { color: meta.priceColor }]} numberOfLines={1}>
+            <Text style={[styles.comPrice, { color: colors.primary }]} numberOfLines={1}>
               {price}
             </Text>
           ) : null}
           {mrp ? (
-            <Text style={styles.comMrp} numberOfLines={1}>
+            <Text style={[styles.comMrp, { color: colors.muted }]} numberOfLines={1}>
               {mrp}
             </Text>
           ) : null}
@@ -1363,7 +1471,7 @@ function CommerceCard({
               />
             </View>
             {reviews != null ? (
-              <Text style={[styles.comRatingText, { color: meta.ratingCountColor }]}>
+              <Text style={[styles.comRatingText, { color: colors.muted }]}>
                 ({formatCompact(reviews)})
               </Text>
             ) : null}
@@ -1381,10 +1489,10 @@ function CommerceCard({
                 />
               ))}
             </View>
-            <Text style={[styles.comRatingText, { color: meta.ratingTextColor }]}>
+            <Text style={[styles.comRatingText, { color: colors.secondary }]}>
               {rating.toFixed(1)}
               {reviews != null ? (
-                <Text style={{ color: meta.ratingCountColor }}>
+                <Text style={{ color: colors.muted }}>
                   {` (${formatCompact(reviews)})`}
                 </Text>
               ) : null}
@@ -1393,7 +1501,7 @@ function CommerceCard({
         )
       ) : null}
       {seller ? (
-        <Text style={styles.comSeller} numberOfLines={1}>
+        <Text style={[styles.comSeller, { color: colors.muted }]} numberOfLines={1}>
           {meta.sellerPrefix} {seller}
         </Text>
       ) : null}
@@ -1411,6 +1519,7 @@ function LinkedInCard({
   reposts,
   likes,
   avatar,
+  hideCounts,
 }: {
   headline: string | null;
   description: string;
@@ -1419,10 +1528,12 @@ function LinkedInCard({
   reposts: number | null;
   likes: number | null;
   avatar: string | null;
+  hideCounts: boolean;
 }) {
+  const colors = useCardColors();
   const body = headline && headline !== description ? `${headline}\n${description}`.trim() : headline || description;
   return (
-    <View style={styles.li}>
+    <View style={[styles.li, { backgroundColor: colors.surface }]}>
       <View style={styles.liHeader}>
         {avatar ? (
           <Image source={{ uri: avatar }} style={styles.liAvatar} resizeMode="cover" />
@@ -1432,10 +1543,10 @@ function LinkedInCard({
           </View>
         )}
         <View style={styles.liNames}>
-          <Text style={styles.liName} numberOfLines={1}>
+          <Text style={[styles.liName, { color: colors.primary }]} numberOfLines={1}>
             {authorName}
           </Text>
-          <Text style={styles.liMeta} numberOfLines={1}>
+          <Text style={[styles.liMeta, { color: colors.muted }]} numberOfLines={1}>
             {timeLabel}
           </Text>
         </View>
@@ -1443,21 +1554,21 @@ function LinkedInCard({
           <Text style={styles.liBadgeText}>in</Text>
         </View>
       </View>
-      <Text style={styles.liBody} numberOfLines={6}>
+      <Text style={[styles.liBody, { color: colors.primary }]} numberOfLines={6}>
         {body}
       </Text>
-      {reposts != null || likes != null ? (
-        <View style={styles.liFooter}>
+      {!hideCounts && (reposts != null || likes != null) ? (
+        <View style={[styles.liFooter, { borderTopColor: colors.divider }]}>
           {reposts != null ? (
             <View style={styles.liStat}>
               <Repeat2 size={13} color="#0A66C2" strokeWidth={2} />
-              <Text style={styles.liStatText}>{formatCompact(reposts)}</Text>
+              <Text style={[styles.liStatText, { color: colors.secondary }]}>{formatCompact(reposts)}</Text>
             </View>
           ) : null}
           {likes != null ? (
             <View style={styles.liStat}>
               <ThumbsUp size={13} color="#0A66C2" strokeWidth={2} />
-              <Text style={styles.liStatText}>{formatCompact(likes)}</Text>
+              <Text style={[styles.liStatText, { color: colors.secondary }]}>{formatCompact(likes)}</Text>
             </View>
           ) : null}
         </View>
@@ -1485,13 +1596,14 @@ function IndeedCard({
   image: string | null;
   posted: string | null;
 }) {
+  const colors = useCardColors();
   return (
-    <View style={styles.in}>
+    <View style={[styles.in, { backgroundColor: colors.surface }]}>
       <View style={styles.inProviderRow}>
         <View style={styles.inDot} />
-        <Text style={styles.inProvider}>Indeed</Text>
+        <Text style={[styles.inProvider, { color: colors.secondary }]}>Indeed</Text>
         {posted ? (
-          <Text style={styles.inPosted} numberOfLines={1}>
+          <Text style={[styles.inPosted, { color: colors.muted }]} numberOfLines={1}>
             {posted}
           </Text>
         ) : null}
@@ -1501,13 +1613,13 @@ function IndeedCard({
           <Image source={{ uri: image }} style={styles.inImage} resizeMode="cover" />
         </View>
       ) : null}
-      <Text style={styles.inTitle} numberOfLines={2}>
+      <Text style={[styles.inTitle, { color: colors.primary }]} numberOfLines={2}>
         {title}
       </Text>
       {company ? (
         <View style={styles.inCompanyRow}>
           <Building2 size={13} color="#8A8A8A" strokeWidth={2} />
-          <Text style={styles.inCompany} numberOfLines={1}>
+          <Text style={[styles.inCompany, { color: colors.secondary }]} numberOfLines={1}>
             {company}
           </Text>
         </View>
@@ -1517,7 +1629,7 @@ function IndeedCard({
           {location ? (
             <View style={styles.inMetaItem}>
               <MapPin size={12} color="#2557A7" strokeWidth={2} />
-              <Text style={styles.inMetaText} numberOfLines={1}>
+              <Text style={[styles.inMetaText, { color: colors.secondary }]} numberOfLines={1}>
                 {location}
               </Text>
             </View>
@@ -1532,7 +1644,7 @@ function IndeedCard({
         </View>
       ) : null}
       {salary ? (
-        <View style={styles.inSalaryRow}>
+        <View style={[styles.inSalaryRow, { borderTopColor: colors.divider }]}>
           <Text style={styles.inSalary} numberOfLines={1}>
             {salary}
           </Text>
@@ -1570,18 +1682,19 @@ function RestaurantCard({
   reviews: number | null;
   eta: string | null;
 }) {
+  const colors = useCardColors();
   const meta = RESTAURANT_BRAND[brand];
   return (
-    <View style={styles.re}>
+    <View style={[styles.re, { backgroundColor: colors.surface }]}>
       <View style={styles.reProviderRow}>
         <View style={[styles.reDot, { backgroundColor: meta.color }]} />
-        <Text style={styles.reProvider}>{meta.label}</Text>
+        <Text style={[styles.reProvider, { color: colors.secondary }]}>{meta.label}</Text>
         {rating != null ? (
           <View style={styles.reRatingRow}>
             <Star size={11} color="#F59E0B" fill="#F59E0B" strokeWidth={1} />
-            <Text style={styles.reRatingText}>{rating.toFixed(1)}</Text>
+            <Text style={[styles.reRatingText, { color: colors.primary }]}>{rating.toFixed(1)}</Text>
             {reviews != null ? (
-              <Text style={styles.reRatingCount} numberOfLines={1}>
+              <Text style={[styles.reRatingCount, { color: colors.muted }]} numberOfLines={1}>
                 ({formatCompact(reviews)})
               </Text>
             ) : null}
@@ -1593,11 +1706,11 @@ function RestaurantCard({
           <Image source={{ uri: image }} style={styles.reImage} resizeMode="cover" />
         </View>
       ) : null}
-      <Text style={styles.reTitle} numberOfLines={1}>
+      <Text style={[styles.reTitle, { color: colors.primary }]} numberOfLines={1}>
         {title}
       </Text>
       {cuisine ? (
-        <Text style={styles.reCuisine} numberOfLines={1}>
+        <Text style={[styles.reCuisine, { color: colors.secondary }]} numberOfLines={1}>
           {cuisine}
         </Text>
       ) : null}
@@ -1606,7 +1719,7 @@ function RestaurantCard({
           {location ? (
             <View style={styles.reMetaItem}>
               <MapPin size={12} color={meta.color} strokeWidth={2} />
-              <Text style={styles.reMetaText} numberOfLines={1}>
+              <Text style={[styles.reMetaText, { color: colors.secondary }]} numberOfLines={1}>
                 {location}
               </Text>
             </View>
@@ -1614,7 +1727,7 @@ function RestaurantCard({
           {eta ? (
             <View style={styles.reMetaItem}>
               <Clock size={12} color={meta.color} strokeWidth={2} />
-              <Text style={styles.reMetaText} numberOfLines={1}>
+              <Text style={[styles.reMetaText, { color: colors.secondary }]} numberOfLines={1}>
                 {eta}
               </Text>
             </View>
@@ -1643,8 +1756,9 @@ function PinterestCard({
   image: string | null;
   authorName: string;
 }) {
+  const colors = useCardColors();
   return (
-    <View style={styles.pi}>
+    <View style={[styles.pi, { backgroundColor: colors.surface }]}>
       <View style={styles.piProviderRow}>
         <View style={styles.piDot} />
         <Text style={styles.piProvider}>Pinterest</Text>
@@ -1654,19 +1768,19 @@ function PinterestCard({
           <Image source={{ uri: image }} style={styles.piImage} resizeMode="cover" />
         </View>
       ) : null}
-      <Text style={styles.piTitle} numberOfLines={2}>
+      <Text style={[styles.piTitle, { color: colors.primary }]} numberOfLines={2}>
         {title}
       </Text>
       {description ? (
-        <Text style={styles.piDesc} numberOfLines={3}>
+        <Text style={[styles.piDesc, { color: colors.secondary }]} numberOfLines={3}>
           {description}
         </Text>
       ) : null}
-      <View style={styles.piFooter}>
+      <View style={[styles.piFooter, { borderTopColor: colors.divider }]}>
         <View style={styles.piAvatar}>
           <Text style={styles.piAvatarText}>{getInitials(authorName).charAt(0)}</Text>
         </View>
-        <Text style={styles.piAuthor} numberOfLines={1}>
+        <Text style={[styles.piAuthor, { color: colors.secondary }]} numberOfLines={1}>
           {authorName}
         </Text>
       </View>
@@ -1699,11 +1813,12 @@ function AppCard({
   rating: number | null;
   reviews: number | null;
 }) {
+  const colors = useCardColors();
   return (
-    <View style={styles.ap}>
+    <View style={[styles.ap, { backgroundColor: colors.surface }]}>
       <View style={styles.apProviderRow}>
         <View style={[styles.apDot, { backgroundColor: platform === "android" ? "#00D084" : "#0A60FE" }]} />
-        <Text style={styles.apProvider}>{platform === "android" ? "Google Play" : "App Store"}</Text>
+        <Text style={[styles.apProvider, { color: colors.secondary }]}>{platform === "android" ? "Google Play" : "App Store"}</Text>
       </View>
       <View style={styles.apRow}>
         {image ? (
@@ -1714,16 +1829,16 @@ function AppCard({
           </View>
         )}
         <View style={styles.apCol}>
-          <Text style={styles.apTitle} numberOfLines={2}>
+          <Text style={[styles.apTitle, { color: colors.primary }]} numberOfLines={2}>
             {title}
           </Text>
-          <Text style={styles.apDeveloper} numberOfLines={1}>
+          <Text style={[styles.apDeveloper, { color: colors.secondary }]} numberOfLines={1}>
             {developer}
           </Text>
           {downloads ? (
             <View style={styles.apDownloadRow}>
               <Download size={11} color="#555555" strokeWidth={2} />
-              <Text style={styles.apDownloadText} numberOfLines={1}>
+              <Text style={[styles.apDownloadText, { color: colors.muted }]} numberOfLines={1}>
                 {downloads}
               </Text>
             </View>
@@ -1731,28 +1846,28 @@ function AppCard({
         </View>
       </View>
       {category ? (
-        <View style={styles.apCategoryChip}>
-          <Text style={styles.apCategoryText} numberOfLines={1}>
+        <View style={[styles.apCategoryChip, { backgroundColor: colors.subtle }]}>
+          <Text style={[styles.apCategoryText, { color: colors.secondary }]} numberOfLines={1}>
             {category}
           </Text>
         </View>
       ) : null}
       {description ? (
-        <Text style={styles.apDesc} numberOfLines={3}>
+        <Text style={[styles.apDesc, { color: colors.secondary }]} numberOfLines={3}>
           {description}
         </Text>
       ) : null}
       {price || rating != null ? (
-        <View style={styles.apFooter}>
+        <View style={[styles.apFooter, { borderTopColor: colors.divider }]}>
           {price ? (
-            <Text style={styles.apPrice} numberOfLines={1}>
+            <Text style={[styles.apPrice, { color: colors.primary }]} numberOfLines={1}>
               {price}
             </Text>
           ) : null}
           {rating != null ? (
             <View style={styles.apRatingRow}>
               <Star size={11} color="#111111" fill="#111111" strokeWidth={1} />
-              <Text style={styles.apRatingText}>
+              <Text style={[styles.apRatingText, { color: colors.secondary }]}>
                 {rating.toFixed(1)}
                 {reviews != null ? ` (${formatCompact(reviews)})` : ""}
               </Text>
@@ -1783,15 +1898,16 @@ function StayCard({
   reviews: number | null;
   image: string | null;
 }) {
+  const colors = useCardColors();
   return (
-    <View style={styles.sy}>
+    <View style={[styles.sy, { backgroundColor: colors.surface }]}>
       <View style={styles.syProviderRow}>
         <View style={styles.syDot} />
-        <Text style={styles.syProvider}>Airbnb</Text>
+        <Text style={[styles.syProvider, { color: colors.secondary }]}>Airbnb</Text>
         {rating != null ? (
           <View style={styles.syRatingRow}>
             <Star size={11} color="#111111" fill="#111111" strokeWidth={1} />
-            <Text style={styles.syRatingText}>
+            <Text style={[styles.syRatingText, { color: colors.secondary }]}>
               {rating.toFixed(1)}
               {reviews != null ? ` (${formatCompact(reviews)})` : ""}
             </Text>
@@ -1803,24 +1919,24 @@ function StayCard({
           <Image source={{ uri: image }} style={styles.syImage} resizeMode="cover" />
         </View>
       ) : null}
-      <Text style={styles.syTitle} numberOfLines={2}>
+      <Text style={[styles.syTitle, { color: colors.primary }]} numberOfLines={2}>
         {title}
       </Text>
       {location ? (
         <View style={styles.syMetaRow}>
           <MapPin size={12} color="#FF385C" strokeWidth={2} />
-          <Text style={styles.syMetaText} numberOfLines={1}>
+          <Text style={[styles.syMetaText, { color: colors.secondary }]} numberOfLines={1}>
             {location}
           </Text>
         </View>
       ) : null}
       {host ? (
-        <Text style={styles.syHost} numberOfLines={1}>
+        <Text style={[styles.syHost, { color: colors.muted }]} numberOfLines={1}>
           Hosted by {host}
         </Text>
       ) : null}
       {price ? (
-        <Text style={styles.syPrice} numberOfLines={1}>
+        <Text style={[styles.syPrice, { color: colors.primary }]} numberOfLines={1}>
           {price}
         </Text>
       ) : null}
@@ -1847,11 +1963,12 @@ function GameCard({
   metacritic: number | null;
   price: string | null;
 }) {
+  const colors = useCardColors();
   return (
-    <View style={styles.gm}>
+    <View style={[styles.gm, { backgroundColor: colors.surface }]}>
       <View style={styles.gmProviderRow}>
         <View style={styles.gmDot} />
-        <Text style={styles.gmProvider}>Steam</Text>
+        <Text style={[styles.gmProvider, { color: colors.muted }]}>Steam</Text>
         {metacritic != null ? (
           <View style={styles.gmMetaChip}>
             <Text style={styles.gmMetaText}>{Math.round(metacritic)}</Text>
@@ -1863,11 +1980,11 @@ function GameCard({
           <Image source={{ uri: image }} style={styles.gmImage} resizeMode="cover" />
         </View>
       ) : null}
-      <Text style={styles.gmTitle} numberOfLines={2}>
+      <Text style={[styles.gmTitle, { color: colors.primary }]} numberOfLines={2}>
         {title}
       </Text>
       {description ? (
-        <Text style={styles.gmDesc} numberOfLines={2}>
+        <Text style={[styles.gmDesc, { color: colors.secondary }]} numberOfLines={2}>
           {description}
         </Text>
       ) : null}
@@ -1879,7 +1996,7 @@ function GameCard({
             </Text>
           ) : null}
           {releaseDate ? (
-            <Text style={styles.gmRelease} numberOfLines={1}>
+            <Text style={[styles.gmRelease, { color: colors.muted }]} numberOfLines={1}>
               Out {releaseDate}
             </Text>
           ) : null}
@@ -1911,11 +2028,12 @@ function BookCard({
   reviews: number | null;
   image: string | null;
 }) {
+  const colors = useCardColors();
   return (
-    <View style={styles.bk}>
+    <View style={[styles.bk, { backgroundColor: colors.surface }]}>
       <View style={styles.bkProviderRow}>
         <View style={styles.bkDot} />
-        <Text style={styles.bkProvider}>Book</Text>
+        <Text style={[styles.bkProvider, { color: colors.muted }]}>Book</Text>
       </View>
       <View style={styles.bkRow}>
         {image ? (
@@ -1926,27 +2044,27 @@ function BookCard({
           </View>
         )}
         <View style={styles.bkCol}>
-          <Text style={styles.bkTitle} numberOfLines={3}>
+          <Text style={[styles.bkTitle, { color: colors.primary }]} numberOfLines={3}>
             {title}
           </Text>
-          <Text style={styles.bkAuthor} numberOfLines={1}>
+          <Text style={[styles.bkAuthor, { color: colors.secondary }]} numberOfLines={1}>
             {authorName}
           </Text>
         </View>
       </View>
       {rating != null || pages != null ? (
-        <View style={styles.bkMetaRow}>
+        <View style={[styles.bkMetaRow, { borderTopColor: colors.divider }]}>
           {rating != null ? (
             <View style={styles.bkRating}>
               <Star size={12} color="#B45309" fill="#B45309" strokeWidth={1} />
-              <Text style={styles.bkRatingText}>
+              <Text style={[styles.bkRatingText, { color: colors.secondary }]}>
                 {rating.toFixed(1)}
                 {reviews != null ? ` (${formatCompact(reviews)})` : ""}
               </Text>
             </View>
           ) : null}
           {pages != null ? (
-            <Text style={styles.bkPages}>{pages} pages</Text>
+            <Text style={[styles.bkPages, { color: colors.muted }]}>{pages} pages</Text>
           ) : null}
         </View>
       ) : null}
@@ -1967,28 +2085,29 @@ function LaunchCard({
   maker: string;
   upvotes: number | null;
 }) {
+  const colors = useCardColors();
   return (
-    <View style={styles.lc}>
+    <View style={[styles.lc, { backgroundColor: colors.surface }]}>
       <View style={styles.lcProviderRow}>
         <View style={styles.lcDot} />
         <Text style={styles.lcProvider}>Product Hunt</Text>
       </View>
       <View style={styles.lcTitleRow}>
         <ArrowBigUp size={32} color="#FF6154" strokeWidth={2} />
-        <Text style={styles.lcTitle} numberOfLines={2}>
+        <Text style={[styles.lcTitle, { color: colors.primary }]} numberOfLines={2}>
           {title}
         </Text>
       </View>
       {tagline ? (
-        <Text style={styles.lcTagline} numberOfLines={2}>
+        <Text style={[styles.lcTagline, { color: colors.secondary }]} numberOfLines={2}>
           {tagline}
         </Text>
       ) : null}
-      <View style={styles.lcFooter}>
+      <View style={[styles.lcFooter, { borderTopColor: colors.divider }]}>
         <View style={styles.lcAvatar}>
           <Text style={styles.lcAvatarText}>{getInitials(maker).charAt(0)}</Text>
         </View>
-        <Text style={styles.lcMaker} numberOfLines={1}>
+        <Text style={[styles.lcMaker, { color: colors.secondary }]} numberOfLines={1}>
           {maker}
         </Text>
         <View style={styles.lcVotes}>
@@ -2015,6 +2134,8 @@ function YouTubeCard({
   scheduledLabel,
   watchingLabel,
   concurrentViewers,
+  hideCounts,
+  colorScheme,
 }: {
   kind: YouTubeKind;
   isStory: boolean;
@@ -2028,17 +2149,24 @@ function YouTubeCard({
   scheduledLabel: string | null;
   watchingLabel: string | null;
   concurrentViewers: number | null;
+  hideCounts: boolean;
+  colorScheme: CardColorScheme;
 }) {
+  const isDark = colorScheme === "dark";
+  const showWatching = !hideCounts;
+  const showViews = !hideCounts;
   const sub =
     kind === "live"
-      ? (watchingLabel ||
-        (concurrentViewers != null
-          ? `${formatCompact(concurrentViewers)} watching`
-          : "Live now"))
+      ? (showWatching
+        ? (watchingLabel ||
+          (concurrentViewers != null
+            ? `${formatCompact(concurrentViewers)} watching`
+            : "Live now"))
+        : null) || null
       : kind === "premiere"
         ? (scheduledLabel ? `Premieres ${scheduledLabel}` : "Premiere")
         : [
-            views != null ? `${formatCompact(views)} views` : null,
+            showViews && views != null ? `${formatCompact(views)} views` : null,
             age,
             kind === "short" ? "Short" : null,
           ]
@@ -2046,10 +2174,10 @@ function YouTubeCard({
             .join(" • ") || null;
 
   return (
-    <View style={styles.yt}>
+    <View style={[styles.yt, { backgroundColor: isDark ? "#0F0F0F" : "#FFFFFF" }]}>
       <View style={styles.ytProviderRow}>
         <View style={styles.ytDot} />
-        <Text style={styles.ytProvider} numberOfLines={1}>
+        <Text style={[styles.ytProvider, { color: isDark ? "#AAAAAA" : "#606060" }]} numberOfLines={1}>
           YouTube
         </Text>
         {kind === "live" ? (
@@ -2067,11 +2195,11 @@ function YouTubeCard({
           </View>
         ) : null}
       </View>
-      <Text style={styles.ytTitle} numberOfLines={isStory ? 3 : 2}>
+      <Text style={[styles.ytTitle, { color: isDark ? "#FFFFFF" : "#0F0F0F" }]} numberOfLines={isStory ? 3 : 2}>
         {title}
       </Text>
       {sub ? (
-        <Text style={styles.ytSub} numberOfLines={1}>
+        <Text style={[styles.ytSub, { color: isDark ? "#AAAAAA" : "#606060" }]} numberOfLines={1}>
           {sub}
         </Text>
       ) : null}
@@ -2089,11 +2217,11 @@ function YouTubeCard({
         {channelAvatar ? (
           <Image source={{ uri: channelAvatar }} style={styles.ytChannelAvatar} resizeMode="cover" />
         ) : (
-          <View style={[styles.ytChannelAvatar, styles.ytChannelFallback]}>
-            <Text style={styles.ytChannelInitial}>{getInitials(channel)}</Text>
+          <View style={[styles.ytChannelAvatar, styles.ytChannelFallback, { backgroundColor: isDark ? "#272727" : "#E5E5E5" }]}>
+            <Text style={[styles.ytChannelInitial, { color: isDark ? "#FFFFFF" : "#0F0F0F" }]}>{getInitials(channel)}</Text>
           </View>
         )}
-        <Text style={styles.ytChannel} numberOfLines={1}>
+        <Text style={[styles.ytChannel, { color: isDark ? "#D8D8D8" : "#0F0F0F" }]} numberOfLines={1}>
           {channel}
         </Text>
       </View>
@@ -2154,21 +2282,26 @@ function TweetCard({
   handle,
   verified,
   timeLabel,
+  views,
   likeCount,
   replyCount,
   avatar,
+  hideCounts,
 }: {
   body: string;
   authorName: string;
   handle: string | null;
   verified: boolean;
   timeLabel: string;
+  views: number | null;
   likeCount: number | null;
   replyCount: number | null;
   avatar: string | null;
+  hideCounts: boolean;
 }) {
+  const colors = useCardColors();
   return (
-    <View style={styles.tw}>
+    <View style={[styles.tw, { backgroundColor: colors.surface }]}>
       <View style={styles.twHeader}>
         {avatar ? (
           <Image source={{ uri: avatar }} style={styles.twAvatar} resizeMode="cover" />
@@ -2179,39 +2312,47 @@ function TweetCard({
         )}
         <View style={styles.twNames}>
           <View style={styles.twNameRow}>
-            <Text style={styles.twName} numberOfLines={1}>
+          <Text style={[styles.twName, { color: colors.primary }]} numberOfLines={1}>
               {authorName}
             </Text>
             {verified ? <VerifiedDot size={15} /> : null}
           </View>
-          <Text style={styles.twHandle} numberOfLines={1}>
+          <Text style={[styles.twHandle, { color: colors.muted }]} numberOfLines={1}>
             {handle ? `@${handle} · ` : ""}{timeLabel}
           </Text>
         </View>
         <XLogo size={18} />
       </View>
-      <Text style={styles.twBody} numberOfLines={6}>
+      <Text style={[styles.twBody, { color: colors.primary }]} numberOfLines={6}>
         {body}
       </Text>
-      <View style={styles.twFooter}>
-        <View style={styles.twStat}>
-          <Heart
-            size={14}
-            color={likeCount ? "#F91880" : "#536471"}
-            fill={likeCount ? "#F91880" : "transparent"}
-            strokeWidth={2}
-          />
-          {likeCount != null ? (
-            <Text style={styles.twStatText}>{formatCount(likeCount)}</Text>
+      {!hideCounts ? (
+        <View style={[styles.twFooter, { borderTopColor: colors.divider }]}>
+          {views != null ? (
+            <View style={styles.twStat}>
+              <Eye size={14} color="#536471" strokeWidth={2} />
+              <Text style={[styles.twStatText, { color: colors.muted }]}>{formatCount(views)}</Text>
+            </View>
           ) : null}
+          <View style={styles.twStat}>
+            <Heart
+              size={14}
+              color={likeCount ? "#F91880" : "#536471"}
+              fill={likeCount ? "#F91880" : "transparent"}
+              strokeWidth={2}
+            />
+            {likeCount != null ? (
+              <Text style={[styles.twStatText, { color: colors.muted }]}>{formatCount(likeCount)}</Text>
+            ) : null}
+          </View>
+          <View style={styles.twStat}>
+            <MessageCircle size={14} color="#536471" strokeWidth={2} />
+            <Text style={[styles.twStatText, { color: colors.muted }]}>
+              {replyCount != null && replyCount > 0 ? formatCount(replyCount) : "Reply"}
+            </Text>
+          </View>
         </View>
-        <View style={styles.twStat}>
-          <MessageCircle size={14} color="#536471" strokeWidth={2} />
-          <Text style={styles.twStatText}>
-            {replyCount != null && replyCount > 0 ? formatCount(replyCount) : "Reply"}
-          </Text>
-        </View>
-      </View>
+      ) : null}
     </View>
   );
 }
@@ -2244,11 +2385,12 @@ function DynamicCard({
   image: string | null;
   favicon: string | null;
 }) {
+  const colors = useCardColors();
   const size = useImageSize(image);
   const hasSize = size.loaded && size.width > 0 && size.height > 0;
 
   const footer = (
-    <View style={styles.edFooter}>
+    <View style={[styles.edFooter, { borderTopColor: colors.divider }]}>
       {favicon ? (
         <Image source={{ uri: favicon }} style={styles.edAvatar} resizeMode="cover" />
       ) : (
@@ -2256,10 +2398,10 @@ function DynamicCard({
           <Text style={styles.edAvatarText}>{getInitials(authorName)}</Text>
         </View>
       )}
-      <Text style={styles.edAuthor} numberOfLines={1}>
+      <Text style={[styles.edAuthor, { color: colors.secondary }]} numberOfLines={1}>
         {authorName}
       </Text>
-      <Text style={styles.edReadTime} numberOfLines={1}>
+      <Text style={[styles.edReadTime, { color: colors.muted }]} numberOfLines={1}>
         {`${minutes} min read`}
       </Text>
     </View>
@@ -2274,15 +2416,15 @@ function DynamicCard({
     const heroHeight = Math.min(contentWidth / heroRatio, heroMax);
 
     return (
-      <View style={styles.editorial}>
+      <View style={[styles.editorial, { backgroundColor: colors.surface }]}>
         <View style={[styles.dynHeroWrap, styles.dynHeroFirst, { height: heroHeight }]}>
           <Image source={{ uri: image }} style={styles.dynHero} resizeMode="contain" />
         </View>
-        <Text style={[styles.edTitle, styles.dynTitleBelowHero]} numberOfLines={2}>
+        <Text style={[styles.edTitle, styles.dynTitleBelowHero, { color: colors.primary }]} numberOfLines={2}>
           {title}
         </Text>
         {excerpt ? (
-          <Text style={[styles.edExcerpt, styles.dynExcerptBelowHero]} numberOfLines={2}>
+          <Text style={[styles.edExcerpt, styles.dynExcerptBelowHero, { color: colors.secondary }]} numberOfLines={2}>
             {excerpt}
           </Text>
         ) : null}
@@ -2292,13 +2434,13 @@ function DynamicCard({
   }
 
   return (
-    <View style={styles.editorial}>
-      <Text style={styles.edTitle} numberOfLines={isStory ? 3 : 2}>
+    <View style={[styles.editorial, { backgroundColor: colors.surface }]}>
+      <Text style={[styles.edTitle, { color: colors.primary }]} numberOfLines={isStory ? 3 : 2}>
         {title}
       </Text>
       <View style={styles.edRow}>
         {excerpt ? (
-          <Text style={styles.edExcerpt} numberOfLines={3}>
+          <Text style={[styles.edExcerpt, { color: colors.secondary }]} numberOfLines={3}>
             {excerpt}
           </Text>
         ) : null}
@@ -2332,8 +2474,9 @@ function SpotlightCard({
   pill: string;
   image: string | null;
 }) {
+  const colors = useCardColors();
   return (
-    <View style={styles.spot}>
+    <View style={[styles.spot, { backgroundColor: colors.surface }]}>
       <View style={styles.spotMeta}>
         {pill ? (
           <View style={styles.spotPill}>
@@ -2343,15 +2486,15 @@ function SpotlightCard({
             </Text>
           </View>
         ) : null}
-        <Text style={styles.spotMetaText} numberOfLines={1}>
+        <Text style={[styles.spotMetaText, { color: colors.muted }]} numberOfLines={1}>
           {dateLabel} • {`${minutes} min read`}
         </Text>
       </View>
-      <Text style={styles.spotTitle} numberOfLines={isStory ? 3 : 2}>
+      <Text style={[styles.spotTitle, { color: colors.primary }]} numberOfLines={isStory ? 3 : 2}>
         {title}
       </Text>
       {excerpt ? (
-        <Text style={styles.spotExcerpt} numberOfLines={3}>
+        <Text style={[styles.spotExcerpt, { color: colors.secondary }]} numberOfLines={3}>
           {excerpt}
         </Text>
       ) : null}
@@ -2360,11 +2503,11 @@ function SpotlightCard({
           <Image source={{ uri: image }} style={styles.spotHero} resizeMode="cover" />
         </View>
       ) : null}
-      <View style={styles.spotFooter}>
+      <View style={[styles.spotFooter, { borderTopColor: colors.divider }]}>
         <View style={styles.spotAvatar}>
           <Text style={styles.spotAvatarText}>{getInitials(authorName).charAt(0)}</Text>
         </View>
-        <Text style={styles.spotAuthor} numberOfLines={1}>
+        <Text style={[styles.spotAuthor, { color: colors.primary }]} numberOfLines={1}>
           {authorName}
         </Text>
       </View>

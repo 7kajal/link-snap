@@ -1,6 +1,10 @@
+import { Buffer } from "buffer";
+import * as ImageManipulator from "expo-image-manipulator";
+import * as ImagePicker from "expo-image-picker";
+import { LinearGradient } from "expo-linear-gradient";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import {
   ArrowLeft,
-  Check,
   CircleDot,
   Download,
   Droplets,
@@ -12,7 +16,7 @@ import {
   Share2,
   X,
 } from "lucide-react-native";
-import Svg, { Path } from "react-native-svg";
+import { PNG } from "pngjs/browser";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -24,38 +28,45 @@ import {
   Text,
   TextInput,
   UIManager,
-  useColorScheme,
   useWindowDimensions,
   View,
 } from "react-native";
-import { LinearGradient } from "expo-linear-gradient";
-import * as ImageManipulator from "expo-image-manipulator";
-import * as ImagePicker from "expo-image-picker";
-import { Buffer } from "buffer";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
+import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import Animated, {
   runOnJS,
   useAnimatedStyle,
   useSharedValue,
 } from "react-native-reanimated";
-import { KeyboardAvoidingView } from "react-native-keyboard-controller";
-import { PNG } from "pngjs/browser";
-import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
+import Svg, { Path } from "react-native-svg";
 
-import LinkCardView, { type CardBackgroundMode, type CardTheme } from "@/components/link-card-view";
+import LinkCardView, {
+  type CardBackgroundMode,
+  type CardColorScheme,
+  type CardTheme,
+} from "@/components/link-card-view";
 import { SkeletonCard } from "@/components/skeleton-card";
-import { fetchLinkPreview, type LinkPreview, type TwitchKind, type YouTubeKind } from "@/lib/link-preview";
+import { useAppAppearance } from "@/contexts/appearance-context";
+import { addHistoryItem } from "@/lib/history";
+import {
+  fetchLinkPreview,
+  type LinkPreview,
+  type TwitchKind,
+  type YouTubeKind,
+} from "@/lib/link-preview";
 import { hexToHsv, hsvToHex } from "@/lib/palette";
 import { displayToSource, readTilePixel, rgbaToHex } from "@/lib/pixel-sampler";
-import { addHistoryItem } from "@/lib/history";
-import { useImageSize } from "@/lib/use-image-size";
 import {
   getAvailableTargets,
   SHARE_TARGETS,
   shareToTarget,
   type ShareTargetId,
 } from "@/lib/share-targets";
+import { useImageSize } from "@/lib/use-image-size";
 
 const BRAND_PATHS: Record<"instagram" | "facebook" | "whatsapp", string> = {
   instagram:
@@ -78,7 +89,8 @@ function TargetIcon({ target }: { target: ShareTargetId }) {
   if (target === "instagram") return <BrandIcon name="instagram" />;
   if (target === "whatsapp") return <BrandIcon name="whatsapp" />;
   if (target === "facebook") return <BrandIcon name="facebook" />;
-  if (target === "save") return <Download size={18} color="#ffffff" strokeWidth={2.2} />;
+  if (target === "save")
+    return <Download size={18} color="#ffffff" strokeWidth={2.2} />;
   return <Share2 size={18} color="#ffffff" strokeWidth={2.2} />;
 }
 
@@ -94,6 +106,7 @@ const BG_PRESETS: { label: string; value: string }[] = [
 ];
 
 type ToolId = "theme" | "bg" | "details" | "blur" | "vignette";
+type CardAppearance = "auto" | CardColorScheme;
 
 type ThemeField = {
   key: string;
@@ -161,7 +174,9 @@ function ValueSlider({
   const gesture = useMemo(
     () =>
       Gesture.Race(
-        Gesture.Tap().maxDistance(12).onEnd((event) => applyX(event.x)),
+        Gesture.Tap()
+          .maxDistance(12)
+          .onEnd((event) => applyX(event.x)),
         Gesture.Pan()
           .activeOffsetX([-10, 10])
           .failOffsetY([-12, 12])
@@ -182,7 +197,9 @@ function ValueSlider({
         }}
         style={{ height: 36, justifyContent: "center" }}
       >
-        <View style={{ height: 6, borderRadius: 999, backgroundColor: "#E4E4E7" }}>
+        <View
+          style={{ height: 6, borderRadius: 999, backgroundColor: "#E4E4E7" }}
+        >
           <Animated.View
             style={{
               height: 6,
@@ -217,8 +234,7 @@ function ValueSlider({
 export default function ResultScreen() {
   const router = useRouter();
   const { url: urlParam } = useLocalSearchParams<{ url?: string }>();
-  const systemScheme = useColorScheme();
-  const isDarkMode = systemScheme === "dark";
+  const { isDarkMode } = useAppAppearance();
   const insets = useSafeAreaInsets();
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
 
@@ -226,7 +242,9 @@ export default function ResultScreen() {
   const [preview, setPreview] = useState<LinkPreview | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [sharingTarget, setSharingTarget] = useState<ShareTargetId | null>(null);
+  const [sharingTarget, setSharingTarget] = useState<ShareTargetId | null>(
+    null,
+  );
   const [activeTool, setActiveTool] = useState<ToolId | null>(null);
   const [editing, setEditing] = useState(false);
   const [available, setAvailable] = useState<Record<ShareTargetId, boolean>>({
@@ -239,6 +257,7 @@ export default function ResultScreen() {
 
   // Customization States
   const [theme, setTheme] = useState<CardTheme>("editorial");
+  const [cardAppearance, setCardAppearance] = useState<CardAppearance>("auto");
   const [bgMode, setBgMode] = useState<CardBackgroundMode>("image");
   const [bgColor, setBgColor] = useState("#0B0B12");
   const [backgroundImage, setBackgroundImage] = useState<{
@@ -267,6 +286,16 @@ export default function ResultScreen() {
   const [tweetLikes, setTweetLikes] = useState("");
   const [tweetReplies, setTweetReplies] = useState("");
   const [tweetAvatar, setTweetAvatar] = useState("");
+  const [tweetViews, setTweetViews] = useState("");
+
+  // Clip (TikTok) extras
+  const [clipViews, setClipViews] = useState("");
+
+  // Reddit extras
+  const [postViews, setPostViews] = useState("");
+
+  // Show/hide all engagement counts on the card
+  const [showCounts, setShowCounts] = useState(true);
 
   // YouTube extras (auto from worker/scrape when available, else manual)
   const [ytKind, setYtKind] = useState<YouTubeKind | "">("");
@@ -334,6 +363,7 @@ export default function ResultScreen() {
     setTweetLikes(result.likeCount != null ? String(result.likeCount) : "");
     setTweetReplies(result.replyCount != null ? String(result.replyCount) : "");
     setTweetAvatar(result.avatar || "");
+    setTweetViews(result.viewCount != null ? String(result.viewCount) : "");
     setYtKind("");
     setYtDuration(result.durationSec != null ? String(result.durationSec) : "");
     setYtViews(result.viewCount != null ? String(result.viewCount) : "");
@@ -342,9 +372,13 @@ export default function ResultScreen() {
     );
     setPostSubreddit(result.subreddit || "");
     setPostScore(result.postScore != null ? String(result.postScore) : "");
+    setPostViews(result.viewCount != null ? String(result.viewCount) : "");
+    setClipViews(result.viewCount != null ? String(result.viewCount) : "");
     setCPrice(result.commercePrice || "");
     setCMrp(result.commerceMrp || "");
-    setCRating(result.commerceRating != null ? String(result.commerceRating) : "");
+    setCRating(
+      result.commerceRating != null ? String(result.commerceRating) : "",
+    );
     setCSeller(result.commerceSeller || "");
     setStreamKind("");
     setStreamGame(result.gameName || "");
@@ -434,6 +468,13 @@ export default function ResultScreen() {
           keyboard: "numeric" as const,
         },
         {
+          key: "views",
+          value: tweetViews,
+          setter: setTweetViews,
+          placeholder: "Views (e.g. 12.5K)",
+          keyboard: "default" as const,
+        },
+        {
           key: "avatar",
           value: tweetAvatar,
           setter: setTweetAvatar,
@@ -504,6 +545,13 @@ export default function ResultScreen() {
           placeholder: "Comments (e.g. 340)",
           keyboard: "default" as const,
         },
+        {
+          key: "views",
+          value: clipViews,
+          setter: setClipViews,
+          placeholder: "Views / plays (e.g. 1.2M)",
+          keyboard: "default" as const,
+        },
       ];
     }
     if (t === "post") {
@@ -527,6 +575,13 @@ export default function ResultScreen() {
           value: tweetReplies,
           setter: setTweetReplies,
           placeholder: "Comments (e.g. 56)",
+          keyboard: "default" as const,
+        },
+        {
+          key: "views",
+          value: postViews,
+          setter: setPostViews,
+          placeholder: "Views (e.g. 45K)",
           keyboard: "default" as const,
         },
         {
@@ -886,7 +941,7 @@ export default function ResultScreen() {
         key: "author",
         value: author,
         setter: setAuthor,
-        placeholder: "Author (e.g. Technical Bot)",
+        placeholder: "Author (e.g. XYZ)",
         keyboard: "default" as const,
       },
       {
@@ -929,7 +984,9 @@ export default function ResultScreen() {
       addHistoryItem(result);
     } catch (e) {
       setPreview(null);
-      setError(e instanceof Error ? e.message : "Unable to generate story preview");
+      setError(
+        e instanceof Error ? e.message : "Unable to generate story preview",
+      );
     } finally {
       setLoading(false);
     }
@@ -937,7 +994,9 @@ export default function ResultScreen() {
 
   useEffect(() => {
     load(typeof urlParam === "string" ? urlParam : urlParam?.[0]);
-    getAvailableTargets().then(setAvailable).catch(() => undefined);
+    getAvailableTargets()
+      .then(setAvailable)
+      .catch(() => undefined);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -1020,11 +1079,17 @@ export default function ResultScreen() {
       });
       if (result.canceled) return;
       const asset = result.assets[0];
-      setBackgroundImage({ uri: asset.uri, width: asset.width, height: asset.height });
+      setBackgroundImage({
+        uri: asset.uri,
+        width: asset.width,
+        height: asset.height,
+      });
       setBgMode("image");
       setEyedropperActive(false);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Unable to open the photo library");
+      setError(
+        e instanceof Error ? e.message : "Unable to open the photo library",
+      );
     }
   }
 
@@ -1058,13 +1123,15 @@ export default function ResultScreen() {
     if (!sceneImage) return null;
     const found = backgroundImage
       ? { width: backgroundImage.width, height: backgroundImage.height }
-      : await new Promise<{ width: number; height: number } | null>((resolve) => {
-          Image.getSize(
-            sceneImage,
-            (width, height) => resolve({ width, height }),
-            () => resolve(null),
-          );
-        });
+      : await new Promise<{ width: number; height: number } | null>(
+          (resolve) => {
+            Image.getSize(
+              sceneImage,
+              (width, height) => resolve({ width, height }),
+              () => resolve(null),
+            );
+          },
+        );
     if (found) sourceSizeRef.current = found;
     return found;
   }
@@ -1346,7 +1413,9 @@ export default function ResultScreen() {
   const svGesture = useMemo(
     () =>
       Gesture.Race(
-        Gesture.Tap().maxDistance(12).onEnd((event) => applySV(event.x, event.y)),
+        Gesture.Tap()
+          .maxDistance(12)
+          .onEnd((event) => applySV(event.x, event.y)),
         Gesture.Pan()
           .activateAfterLongPress(120)
           .onUpdate((event) => applySV(event.x, event.y)),
@@ -1378,7 +1447,9 @@ export default function ResultScreen() {
   const hueGesture = useMemo(
     () =>
       Gesture.Race(
-        Gesture.Tap().maxDistance(12).onEnd((event) => applyHue(event.x)),
+        Gesture.Tap()
+          .maxDistance(12)
+          .onEnd((event) => applyHue(event.x)),
         Gesture.Pan()
           .activeOffsetX([-10, 10])
           .failOffsetY([-12, 12])
@@ -1389,12 +1460,13 @@ export default function ResultScreen() {
 
   return (
     <View className={`flex-1 ${isDarkMode ? "bg-[#0a0a0a]" : "bg-gray-50"}`}>
-      <SafeAreaView
-        edges={["top"]}
-        className="flex-1"
-      >
+      <SafeAreaView edges={["top"]} className="flex-1">
         <ScrollView
-          contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 16, paddingBottom: 190 }}
+          contentContainerStyle={{
+            paddingHorizontal: 20,
+            paddingTop: 16,
+            paddingBottom: 190,
+          }}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
           className="w-full max-w-lg self-center flex-1"
@@ -1416,7 +1488,7 @@ export default function ResultScreen() {
                 strokeWidth={2.2}
               />
             </Pressable>
-{preview && !loading && !eyedropperActive ? (
+            {preview && !loading && !eyedropperActive ? (
               <Pressable
                 onPress={toggleEditing}
                 hitSlop={8}
@@ -1473,101 +1545,117 @@ export default function ResultScreen() {
                   })
                 }
               >
-              <MemoLinkCardView
-                ref={cardRef}
-                preview={preview}
-                theme={theme}
-                aspectRatio="story"
-                safeMode
-                bgMode={bgMode}
-                bgColor={bgColor}
-                backgroundImage={sceneImage}
-                blurRadius={blurStrength}
-                vignette={vignetteStrength / 100}
-                author={author}
-                readMinutes={readMinutes}
-                dateText={dateText}
-                location={location}
-                handle={tweetHandle}
-                verified={tweetVerified}
-                likes={tweetLikes}
-                replies={tweetReplies}
-                avatarUrl={tweetAvatar}
-                youtubeKind={ytKind}
-                duration={ytDuration}
-                views={ytViews}
-                watching={ytWatching}
-                subreddit={postSubreddit}
-                score={postScore}
-                price={cPrice}
-                mrp={cMrp}
-                rating={cRating}
-                seller={cSeller}
-                streamKind={streamKind}
-                game={streamGame}
-                viewers={streamViewers}
-                headline={liHeadline}
-                reposts={liReposts}
-                salary={jobSalary}
-                jobType={jobType}
-                cuisine={cuisine}
-                eta={eta}
-                category={appCategory}
-                downloads={appDownloads}
-                host={stayHost}
-                genre={gameGenre}
-                releaseDate={gameRelease}
-                pages={bookPages}
-                tagline={launchTagline}
-                upvotes={launchUpvotes}
-              />
-              {eyedropperActive && sceneImage ? (
-                <>
-                  <GestureDetector gesture={pickGesture}>
-                    <View className="absolute inset-0" />
-                  </GestureDetector>
-                  <View
-                    pointerEvents="none"
-                    className="absolute top-3 inset-x-0 px-4 flex-row items-center justify-start"
-                  >
-                    <View className="px-3 py-1.5 rounded-full bg-black/55">
-                      <Text className="text-xs font-bold text-white">
-                        Tap or hold and drag
-                      </Text>
-                    </View>
-                  </View>
-                  <Pressable
-                    onPress={closeEyedropper}
-                    hitSlop={8}
-                    className="absolute top-3 right-4 w-8 h-8 items-center justify-center rounded-full bg-black/55"
-                  >
-                    <X size={16} color="#ffffff" strokeWidth={2.4} />
-                  </Pressable>
-                  {dragActive ? (
-                    <Animated.View
+                <MemoLinkCardView
+                  ref={cardRef}
+                  preview={preview}
+                  theme={theme}
+                  colorScheme={
+                    cardAppearance === "auto"
+                      ? isDarkMode
+                        ? "dark"
+                        : "light"
+                      : cardAppearance
+                  }
+                  aspectRatio="story"
+                  safeMode
+                  bgMode={bgMode}
+                  bgColor={bgColor}
+                  backgroundImage={sceneImage}
+                  blurRadius={blurStrength}
+                  vignette={vignetteStrength / 100}
+                  hideCounts={!showCounts}
+                  author={author}
+                  readMinutes={readMinutes}
+                  dateText={dateText}
+                  location={location}
+                  handle={tweetHandle}
+                  verified={tweetVerified}
+                  likes={tweetLikes}
+                  replies={tweetReplies}
+                  avatarUrl={tweetAvatar}
+                  youtubeKind={ytKind}
+                  duration={ytDuration}
+                  views={
+                    theme === "tweet"
+                      ? tweetViews
+                      : theme === "post"
+                        ? postViews
+                        : theme === "clip"
+                          ? clipViews
+                          : ytViews
+                  }
+                  watching={ytWatching}
+                  subreddit={postSubreddit}
+                  score={postScore}
+                  price={cPrice}
+                  mrp={cMrp}
+                  rating={cRating}
+                  seller={cSeller}
+                  streamKind={streamKind}
+                  game={streamGame}
+                  viewers={streamViewers}
+                  headline={liHeadline}
+                  reposts={liReposts}
+                  salary={jobSalary}
+                  jobType={jobType}
+                  cuisine={cuisine}
+                  eta={eta}
+                  category={appCategory}
+                  downloads={appDownloads}
+                  host={stayHost}
+                  genre={gameGenre}
+                  releaseDate={gameRelease}
+                  pages={bookPages}
+                  tagline={launchTagline}
+                  upvotes={launchUpvotes}
+                />
+                {eyedropperActive && sceneImage ? (
+                  <>
+                    <GestureDetector gesture={pickGesture}>
+                      <View className="absolute inset-0" />
+                    </GestureDetector>
+                    <View
                       pointerEvents="none"
-                      style={[
-                        {
-                          position: "absolute",
-                          left: 0,
-                          top: 0,
-                          width: 44,
-                          height: 44,
-                          borderRadius: 22,
-                          borderWidth: 3,
-                          borderColor: "#FFFFFF",
-                          shadowColor: "#000000",
-                          shadowOffset: { width: 0, height: 2 },
-                          shadowOpacity: 0.35,
-                          shadowRadius: 4,
-                          elevation: 5,
-                        },
-                        pickCircleStyle,
-                      ]}
-                    />
-                  ) : null}
-                </>
-              ) : null}
+                      className="absolute top-3 inset-x-0 px-4 flex-row items-center justify-start"
+                    >
+                      <View className="px-3 py-1.5 rounded-full bg-black/55">
+                        <Text className="text-xs font-bold text-white">
+                          Tap or hold and drag
+                        </Text>
+                      </View>
+                    </View>
+                    <Pressable
+                      onPress={closeEyedropper}
+                      hitSlop={8}
+                      className="absolute top-3 right-4 w-8 h-8 items-center justify-center rounded-full bg-black/55"
+                    >
+                      <X size={16} color="#ffffff" strokeWidth={2.4} />
+                    </Pressable>
+                    {dragActive ? (
+                      <Animated.View
+                        pointerEvents="none"
+                        style={[
+                          {
+                            position: "absolute",
+                            left: 0,
+                            top: 0,
+                            width: 44,
+                            height: 44,
+                            borderRadius: 22,
+                            borderWidth: 3,
+                            borderColor: "#FFFFFF",
+                            shadowColor: "#000000",
+                            shadowOffset: { width: 0, height: 2 },
+                            shadowOpacity: 0.35,
+                            shadowRadius: 4,
+                            elevation: 5,
+                          },
+                          pickCircleStyle,
+                        ]}
+                      />
+                    ) : null}
+                  </>
+                ) : null}
               </View>
             ) : null}
           </View>
@@ -1587,8 +1675,8 @@ export default function ResultScreen() {
             }}
             contentContainerStyle={{ alignSelf: "stretch" }}
           >
-              {/* Editor sheet: panel grows out of the toolbar as one unit */}
-              {editing ? (
+            {/* Editor sheet: panel grows out of the toolbar as one unit */}
+            {editing ? (
               <View
                 style={{
                   borderRadius: 24,
@@ -1603,642 +1691,751 @@ export default function ResultScreen() {
                   overflow: "hidden",
                 }}
               >
-              <View>
-              {activeTool ? (
-                <View
-                  style={{
-                    paddingHorizontal: 16,
-                    paddingTop: 14,
-                    paddingBottom: 12,
-                    backgroundColor: isDarkMode ? "#18181B" : "#FFFFFF",
-                    borderBottomWidth: 1,
-                    borderBottomColor: isDarkMode ? "#3F3F46" : "#E4E4E7",
-                  }}
-                >
-                  <ScrollView
-                    style={{ maxHeight: Math.min(activeTool === "bg" ? 430 : 300, windowHeight * 0.48) }}
-                    contentContainerStyle={{ paddingBottom: activeTool === "bg" ? 18 : 2 }}
-                    keyboardShouldPersistTaps="handled"
-                    showsVerticalScrollIndicator={false}
-                  >
-                  {/* Theme Style */}
-                  {activeTool === "theme" ? (
-                    <View className="gap-2">
-                      <View className="flex-row items-center gap-1.5">
-                        <Layers size={14} color="#71717a" />
-                        <Text className="text-xs font-bold tracking-wider uppercase text-zinc-500">
-                          Theme Style
-                        </Text>
-                      </View>
+                <View>
+                  {activeTool ? (
+                    <View
+                      style={{
+                        paddingHorizontal: 16,
+                        paddingTop: 14,
+                        paddingBottom: 12,
+                        backgroundColor: isDarkMode ? "#18181B" : "#FFFFFF",
+                        borderBottomWidth: 1,
+                        borderBottomColor: isDarkMode ? "#3F3F46" : "#E4E4E7",
+                      }}
+                    >
                       <ScrollView
-                        horizontal
-                        showsHorizontalScrollIndicator={false}
-                        contentContainerStyle={{ gap: 8 }}
+                        style={{
+                          maxHeight: Math.min(
+                            activeTool === "bg" ? 430 : 300,
+                            windowHeight * 0.48,
+                          ),
+                        }}
+                        contentContainerStyle={{
+                          paddingBottom: activeTool === "bg" ? 18 : 2,
+                        }}
+                        keyboardShouldPersistTaps="handled"
+                        showsVerticalScrollIndicator={false}
                       >
-                        {(
-                          [
-                            "editorial",
-                            "spotlight",
-                            "tweet",
-                            "youtube",
-                            "clip",
-                            "post",
-                            "music",
-                            "repo",
-                            "commerce",
-                            "stream",
-                            "linkedin",
-                            "indeed",
-                            "zomato",
-                            "swiggy",
-                            "pinterest",
-                            "app",
-                            "stay",
-                            "game",
-                            "book",
-                            "launch",
-                          ] as CardTheme[]
-                        ).map((t) => {
-                          const isActive = theme === t;
-                          return (
-                            <Pressable
-                              key={t}
-                              onPress={() => setTheme(t)}
-                              className={`px-4 py-2 rounded-full border ${
-                                isActive
-                                  ? "bg-emerald-500/20 border-emerald-500"
-                                  : "bg-gray-100 border-zinc-200"
-                              }`}
+                        {/* Theme Style */}
+                        {activeTool === "theme" ? (
+                          <View className="gap-2">
+                            <View className="flex-row items-center gap-1.5">
+                              <Layers size={14} color="#71717a" />
+                              <Text className="text-xs font-bold tracking-wider uppercase text-zinc-500">
+                                Theme Style
+                              </Text>
+                            </View>
+                            <ScrollView
+                              horizontal
+                              showsHorizontalScrollIndicator={false}
+                              contentContainerStyle={{ gap: 8 }}
                             >
+                              {(
+                                [
+                                  "editorial",
+                                  "spotlight",
+                                  "tweet",
+                                  "youtube",
+                                  "clip",
+                                  "post",
+                                  "music",
+                                  "repo",
+                                  "commerce",
+                                  "stream",
+                                  "linkedin",
+                                  "indeed",
+                                  "zomato",
+                                  "swiggy",
+                                  "pinterest",
+                                  "app",
+                                  "stay",
+                                  "game",
+                                  "book",
+                                  "launch",
+                                ] as CardTheme[]
+                              ).map((t) => {
+                                const isActive = theme === t;
+                                return (
+                                  <Pressable
+                                    key={t}
+                                    onPress={() => setTheme(t)}
+                                    className={`px-4 py-2 rounded-full border ${
+                                      isActive
+                                        ? "bg-emerald-500/20 border-emerald-500"
+                                        : "bg-gray-100 border-zinc-200"
+                                    }`}
+                                  >
+                                    <Text
+                                      className={`text-xs font-semibold capitalize ${
+                                        isActive
+                                          ? "text-emerald-500"
+                                          : "text-zinc-600"
+                                      }`}
+                                    >
+                                      {t}
+                                    </Text>
+                                  </Pressable>
+                                );
+                              })}
+                            </ScrollView>
+                            {(
+                              <View className="mt-2 gap-2">
+                                <Text className="text-xs font-bold tracking-wider uppercase text-zinc-500">
+                                  Card Appearance
+                                </Text>
+                                <View className="flex-row gap-2">
+                                  {(["auto", "light", "dark"] as CardAppearance[]).map(
+                                    (appearance) => {
+                                      const isActive = cardAppearance === appearance;
+                                      return (
+                                        <Pressable
+                                          key={appearance}
+                                          onPress={() => setCardAppearance(appearance)}
+                                          accessibilityRole="button"
+                                          accessibilityState={{ selected: isActive }}
+                                          className={`px-4 py-2 rounded-full border ${
+                                            isActive
+                                              ? "bg-emerald-500/20 border-emerald-500"
+                                              : "bg-gray-100 border-zinc-200"
+                                          }`}
+                                        >
+                                          <Text
+                                            className={`text-xs font-semibold capitalize ${
+                                              isActive
+                                                ? "text-emerald-500"
+                                                : "text-zinc-600"
+                                            }`}
+                                          >
+                                            {appearance}
+                                          </Text>
+                                        </Pressable>
+                                      );
+                                    },
+                                  )}
+                                </View>
+                              </View>
+                            )}
+                          </View>
+                        ) : null}
+                        {/* Scene Background */}
+                        {activeTool === "bg" ? (
+                          <View className="gap-2">
+                            <View className="flex-row items-center gap-1.5">
+                              <Palette size={14} color="#71717a" />
                               <Text
-                                className={`text-xs font-semibold capitalize ${
-                                  isActive ? "text-emerald-500" : "text-zinc-600"
+                                className={`text-xs font-bold tracking-wider uppercase ${"text-zinc-500"}`}
+                              >
+                                Background
+                              </Text>
+                            </View>
+                            <View
+                              className={`flex-row p-1 rounded-xl ${"bg-gray-100"}`}
+                            >
+                              <Pressable
+                                onPress={() => setBgMode("image")}
+                                className={`flex-1 py-2.5 flex-row items-center justify-center gap-1.5 rounded-lg ${
+                                  bgMode === "image"
+                                    ? "bg-emerald-500"
+                                    : "bg-transparent"
                                 }`}
                               >
-                                {t}
+                                <ImageIcon
+                                  size={14}
+                                  color={
+                                    bgMode === "image" ? "#ffffff" : "#71717a"
+                                  }
+                                />
+                                <Text
+                                  className={`text-xs font-bold ${
+                                    bgMode === "image"
+                                      ? "text-white"
+                                      : "text-zinc-600"
+                                  }`}
+                                >
+                                  Image
+                                </Text>
+                              </Pressable>
+
+                              <Pressable
+                                onPress={() => setBgMode("color")}
+                                className={`flex-1 py-2.5 flex-row items-center justify-center gap-1.5 rounded-lg ${
+                                  bgMode === "color"
+                                    ? "bg-emerald-500"
+                                    : "bg-transparent"
+                                }`}
+                              >
+                                <Palette
+                                  size={14}
+                                  color={
+                                    bgMode === "color" ? "#ffffff" : "#71717a"
+                                  }
+                                />
+                                <Text
+                                  className={`text-xs font-bold ${
+                                    bgMode === "color"
+                                      ? "text-white"
+                                      : "text-zinc-600"
+                                  }`}
+                                >
+                                  Solid Color
+                                </Text>
+                              </Pressable>
+                            </View>
+
+                            {bgMode === "image" ? (
+                              <View className="gap-2">
+                                <Text className="text-sm font-semibold text-zinc-700">
+                                  Current image
+                                </Text>
+                                <View
+                                  onLayout={(event) =>
+                                    setBackgroundPreviewWidth(
+                                      event.nativeEvent.layout.width,
+                                    )
+                                  }
+                                  className="rounded-2xl overflow-hidden border border-zinc-200 bg-gray-100"
+                                  style={{
+                                    height:
+                                      sceneImageSize.width > 0 &&
+                                      sceneImageSize.height > 0 &&
+                                      backgroundPreviewWidth > 0
+                                        ? Math.min(
+                                            260,
+                                            Math.max(
+                                              112,
+                                              (backgroundPreviewWidth *
+                                                sceneImageSize.height) /
+                                                sceneImageSize.width,
+                                            ),
+                                          )
+                                        : 112,
+                                  }}
+                                >
+                                  {sceneImage ? (
+                                    <Image
+                                      source={{ uri: sceneImage }}
+                                      resizeMode="contain"
+                                      style={{ width: "100%", height: "100%" }}
+                                    />
+                                  ) : (
+                                    <View className="flex-1 items-center justify-center gap-2">
+                                      <ImageIcon size={22} color="#A1A1AA" />
+                                      <Text className="text-xs font-semibold text-zinc-400">
+                                        No image found for this link
+                                      </Text>
+                                    </View>
+                                  )}
+                                  <Pressable
+                                    onPress={pickBackgroundImage}
+                                    className="absolute right-2 bottom-2 px-3 py-2 rounded-full bg-white/95 border border-zinc-200 active:opacity-80"
+                                  >
+                                    <Text className="text-xs font-bold text-zinc-800">
+                                      Change
+                                    </Text>
+                                  </Pressable>
+                                </View>
+                              </View>
+                            ) : (
+                              <View className="gap-3">
+                                <View className="gap-3">
+                                  <View className="gap-2">
+                                    <View className="flex-row items-center justify-between">
+                                      <Text className="text-sm font-semibold text-zinc-700">
+                                        Pick color
+                                      </Text>
+                                      <View className="flex-row items-center gap-2">
+                                        <View
+                                          className="w-8 h-8 rounded-full border border-zinc-300"
+                                          style={{ backgroundColor: bgColor }}
+                                        />
+
+                                        <TextInput
+                                          value={hexText}
+                                          onChangeText={setHexText}
+                                          onSubmitEditing={() => {
+                                            if (!applyCustomColor(hexText))
+                                              setHexText(bgColor);
+                                          }}
+                                          placeholder="#0B0B12"
+                                          placeholderTextColor="#a1a1aa"
+                                          autoCapitalize="none"
+                                          autoCorrect={false}
+                                          className="w-28 border rounded-xl px-3 h-10 text-sm font-medium bg-gray-100 border-zinc-200 text-zinc-900"
+                                        />
+                                        {sceneImage ? (
+                                          <Pressable
+                                            onPress={() =>
+                                              eyedropperActive
+                                                ? closeEyedropper()
+                                                : openEyedropper()
+                                            }
+                                            className={`p-2.5 h-10 rounded-xl border flex-row items-center justify-center ${
+                                              eyedropperActive
+                                                ? "bg-emerald-500 border-emerald-500"
+                                                : "bg-gray-100 border-zinc-200"
+                                            }`}
+                                          >
+                                            <Pipette
+                                              size={16}
+                                              color={
+                                                eyedropperActive
+                                                  ? "#ffffff"
+                                                  : "#52525b"
+                                              }
+                                            />
+                                          </Pressable>
+                                        ) : null}
+                                      </View>
+                                    </View>
+                                    <GestureDetector gesture={svGesture}>
+                                      <View
+                                        onLayout={(e) => {
+                                          // eslint-disable-next-line react-hooks/immutability
+                                          svW.value =
+                                            e.nativeEvent.layout.width;
+                                          // eslint-disable-next-line react-hooks/immutability
+                                          svH.value =
+                                            e.nativeEvent.layout.height;
+                                        }}
+                                        style={{
+                                          height: 148,
+                                          borderRadius: 12,
+                                          overflow: "hidden",
+                                          backgroundColor: `hsl(${customHsv.h}, 100%, 50%)`,
+                                        }}
+                                      >
+                                        <LinearGradient
+                                          colors={[
+                                            "rgba(255,255,255,1)",
+                                            "rgba(255,255,255,0)",
+                                          ]}
+                                          start={{ x: 0, y: 0 }}
+                                          end={{ x: 1, y: 0 }}
+                                          style={{
+                                            position: "absolute",
+                                            top: 0,
+                                            left: 0,
+                                            right: 0,
+                                            bottom: 0,
+                                          }}
+                                        />
+                                        <LinearGradient
+                                          colors={[
+                                            "rgba(0,0,0,0)",
+                                            "rgba(0,0,0,1)",
+                                          ]}
+                                          start={{ x: 0, y: 0 }}
+                                          end={{ x: 0, y: 1 }}
+                                          style={{
+                                            position: "absolute",
+                                            top: 0,
+                                            left: 0,
+                                            right: 0,
+                                            bottom: 0,
+                                          }}
+                                        />
+                                        <Animated.View
+                                          style={[
+                                            {
+                                              position: "absolute",
+                                              left: 0,
+                                              top: 0,
+                                              width: 22,
+                                              height: 22,
+                                              borderRadius: 11,
+                                              backgroundColor: customHex,
+                                              borderWidth: 3,
+                                              borderColor: "#FFFFFF",
+                                              shadowColor: "#000000",
+                                              shadowOffset: {
+                                                width: 0,
+                                                height: 1,
+                                              },
+                                              shadowOpacity: 0.3,
+                                              shadowRadius: 2,
+                                              elevation: 3,
+                                            },
+                                            svThumbStyle,
+                                          ]}
+                                        />
+                                      </View>
+                                    </GestureDetector>
+                                    <GestureDetector gesture={hueGesture}>
+                                      <View
+                                        onLayout={(e) => {
+                                          // eslint-disable-next-line react-hooks/immutability
+                                          hueW.value =
+                                            e.nativeEvent.layout.width;
+                                        }}
+                                        style={{
+                                          height: 28,
+                                          borderRadius: 999,
+                                          overflow: "hidden",
+                                        }}
+                                      >
+                                        <LinearGradient
+                                          colors={[
+                                            "#ff0000",
+                                            "#ffff00",
+                                            "#00ff00",
+                                            "#00ffff",
+                                            "#0000ff",
+                                            "#ff00ff",
+                                            "#ff0000",
+                                          ]}
+                                          start={{ x: 0, y: 0 }}
+                                          end={{ x: 1, y: 0 }}
+                                          style={{
+                                            position: "absolute",
+                                            top: 0,
+                                            left: 0,
+                                            right: 0,
+                                            bottom: 0,
+                                          }}
+                                        />
+                                        <Animated.View
+                                          style={[
+                                            {
+                                              position: "absolute",
+                                              left: 0,
+                                              top: 3,
+                                              width: 22,
+                                              height: 22,
+                                              borderRadius: 11,
+                                              backgroundColor: customHex,
+                                              borderWidth: 3,
+                                              borderColor: "#FFFFFF",
+                                              shadowColor: "#000000",
+                                              shadowOffset: {
+                                                width: 0,
+                                                height: 1,
+                                              },
+                                              shadowOpacity: 0.3,
+                                              shadowRadius: 2,
+                                              elevation: 3,
+                                            },
+                                            hueThumbStyle,
+                                          ]}
+                                        />
+                                      </View>
+                                    </GestureDetector>
+                                  </View>
+                                </View>
+                              </View>
+                            )}
+                          </View>
+                        ) : null}
+                        {activeTool === "blur" ? (
+                          <View className="gap-2">
+                            <View className="flex-row items-center justify-between">
+                              <View className="flex-row items-center gap-1.5">
+                                <Droplets size={14} color="#71717a" />
+                                <Text className="text-xs font-bold tracking-wider uppercase text-zinc-500">
+                                  Blur strength
+                                </Text>
+                              </View>
+                              <Text className="text-sm font-bold text-emerald-500">
+                                {blurStrength}
                               </Text>
-                            </Pressable>
-                          );
-                        })}
+                            </View>
+                            <ValueSlider
+                              value={blurStrength}
+                              maximumValue={24}
+                              step={1}
+                              onChange={setBlurStrength}
+                            />
+                          </View>
+                        ) : null}
+                        {activeTool === "vignette" ? (
+                          <View className="gap-2">
+                            <View className="flex-row items-center justify-between">
+                              <View className="flex-row items-center gap-1.5">
+                                <CircleDot size={14} color="#71717a" />
+                                <Text className="text-xs font-bold tracking-wider uppercase text-zinc-500">
+                                  Vignette
+                                </Text>
+                              </View>
+                              <Text className="text-sm font-bold text-emerald-500">
+                                {vignetteStrength}%
+                              </Text>
+                            </View>
+                            <ValueSlider
+                              value={vignetteStrength}
+                              maximumValue={100}
+                              step={1}
+                              onChange={setVignetteStrength}
+                            />
+                          </View>
+                        ) : null}
+                        {/* Card Details (author / read time / date / location) */}
+                        {activeTool === "details" ? (
+                          <View className="gap-2">
+                            <View className="flex-row items-center gap-1.5">
+                              <PenLine size={14} color="#71717a" />
+                              <Text
+                                className={`text-xs font-bold tracking-wider uppercase ${"text-zinc-500"}`}
+                              >
+                                Card Details
+                              </Text>
+                            </View>
+                            <View className="gap-2">
+                              {themeFields(theme).map((field) => (
+                                <TextInput
+                                  key={field.key}
+                                  value={field.value}
+                                  onChangeText={field.setter}
+                                  placeholder={field.placeholder}
+                                  placeholderTextColor="#a1a1aa"
+                                  keyboardType={field.keyboard}
+                                  className={`border rounded-xl px-3.5 h-11 text-sm font-medium ${"bg-gray-100 border-zinc-200 text-zinc-900"}`}
+                                  autoCapitalize="none"
+                                  autoCorrect={false}
+                                />
+                              ))}
+                              {[
+                                "clip",
+                                "tweet",
+                                "post",
+                                "youtube",
+                                "stream",
+                                "linkedin",
+                              ].includes(theme) ? (
+                                <Pressable
+                                  onPress={() => setShowCounts(!showCounts)}
+                                  className={`flex-row items-center justify-between border rounded-xl px-3.5 h-11 ${"bg-gray-100 border-zinc-200"}`}
+                                >
+                                  <Text
+                                    className={`text-sm font-medium ${"text-zinc-700"}`}
+                                  >
+                                    View & like counts
+                                  </Text>
+                                  <View
+                                    className={`px-3 py-1 rounded-full ${
+                                      showCounts
+                                        ? "bg-emerald-500"
+                                        : "bg-zinc-500/30"
+                                    }`}
+                                  >
+                                    <Text className="text-white text-xs font-bold">
+                                      {showCounts ? "On" : "Off"}
+                                    </Text>
+                                  </View>
+                                </Pressable>
+                              ) : null}
+                              {theme === "tweet" ? (
+                                <Pressable
+                                  onPress={() =>
+                                    setTweetVerified(!tweetVerified)
+                                  }
+                                  className={`flex-row items-center justify-between border rounded-xl px-3.5 h-11 ${"bg-gray-100 border-zinc-200"}`}
+                                >
+                                  <Text
+                                    className={`text-sm font-medium ${"text-zinc-700"}`}
+                                  >
+                                    Verified badge
+                                  </Text>
+                                  <View
+                                    className={`px-3 py-1 rounded-full ${
+                                      tweetVerified
+                                        ? "bg-emerald-500"
+                                        : "bg-zinc-500/30"
+                                    }`}
+                                  >
+                                    <Text className="text-white text-xs font-bold">
+                                      {tweetVerified ? "On" : "Off"}
+                                    </Text>
+                                  </View>
+                                </Pressable>
+                              ) : null}
+                              {theme === "youtube" ? (
+                                <ScrollView
+                                  horizontal
+                                  showsHorizontalScrollIndicator={false}
+                                  contentContainerStyle={{ gap: 8 }}
+                                >
+                                  {(
+                                    [
+                                      { value: "", label: "Auto" },
+                                      { value: "video", label: "Video" },
+                                      { value: "short", label: "Short" },
+                                      { value: "live", label: "Live" },
+                                      { value: "premiere", label: "Premiere" },
+                                    ] as {
+                                      value: YouTubeKind | "";
+                                      label: string;
+                                    }[]
+                                  ).map((k) => {
+                                    const isActive = ytKind === k.value;
+                                    return (
+                                      <Pressable
+                                        key={k.label}
+                                        onPress={() => setYtKind(k.value)}
+                                        className={`px-4 py-2 rounded-full border ${
+                                          isActive
+                                            ? "bg-emerald-500/20 border-emerald-500"
+                                            : "bg-gray-100 border-zinc-200"
+                                        }`}
+                                      >
+                                        <Text
+                                          className={`text-xs font-semibold ${
+                                            isActive
+                                              ? "text-emerald-500"
+                                              : "text-zinc-600"
+                                          }`}
+                                        >
+                                          {k.label}
+                                        </Text>
+                                      </Pressable>
+                                    );
+                                  })}
+                                </ScrollView>
+                              ) : null}
+                              {theme === "stream" ? (
+                                <ScrollView
+                                  horizontal
+                                  showsHorizontalScrollIndicator={false}
+                                  contentContainerStyle={{ gap: 8 }}
+                                >
+                                  {(
+                                    [
+                                      { value: "", label: "Auto" },
+                                      { value: "live", label: "Live" },
+                                      { value: "clip", label: "Clip" },
+                                      { value: "video", label: "VOD" },
+                                      { value: "channel", label: "Channel" },
+                                    ] as {
+                                      value: TwitchKind | "";
+                                      label: string;
+                                    }[]
+                                  ).map((k) => {
+                                    const isActive = streamKind === k.value;
+                                    return (
+                                      <Pressable
+                                        key={k.label}
+                                        onPress={() => setStreamKind(k.value)}
+                                        className={`px-4 py-2 rounded-full border ${
+                                          isActive
+                                            ? "bg-emerald-500/20 border-emerald-500"
+                                            : "bg-gray-100 border-zinc-200"
+                                        }`}
+                                      >
+                                        <Text
+                                          className={`text-xs font-semibold ${
+                                            isActive
+                                              ? "text-emerald-500"
+                                              : "text-zinc-600"
+                                          }`}
+                                        >
+                                          {k.label}
+                                        </Text>
+                                      </Pressable>
+                                    );
+                                  })}
+                                </ScrollView>
+                              ) : null}
+                            </View>
+                          </View>
+                        ) : null}
                       </ScrollView>
                     </View>
                   ) : null}
-                  {/* Scene Background */}
-                {activeTool === "bg" ? (
-                  <View className="gap-2">
-                    <View className="flex-row items-center gap-1.5">
-                      <Palette
-                        size={14}
-                        color="#71717a"
-                      />
-                      <Text
-                        className={`text-xs font-bold tracking-wider uppercase ${
-                          "text-zinc-500"
-                        }`}
-                      >
-                        Background
-                      </Text>
-                    </View>
-                    <View
-                      className={`flex-row p-1 rounded-xl ${
-                        "bg-gray-100"
-                      }`}
-                    >
-                      <Pressable
-                        onPress={() => setBgMode("image")}
-                        className={`flex-1 py-2.5 flex-row items-center justify-center gap-1.5 rounded-lg ${
-                          bgMode === "image" ? "bg-emerald-500" : "bg-transparent"
-                        }`}
-                      >
-                        <ImageIcon
-                          size={14}
-                          color={
-                            bgMode === "image"
-                              ? "#ffffff"
-                            : "#71717a"
-                          }
-                        />
-                        <Text
-                          className={`text-xs font-bold ${
-                            bgMode === "image"
-                              ? "text-white"
-                              : "text-zinc-600"
-                          }`}
-                        >
-                          Image
-                        </Text>
-                      </Pressable>
 
-                      <Pressable
-                        onPress={() => setBgMode("color")}
-                        className={`flex-1 py-2.5 flex-row items-center justify-center gap-1.5 rounded-lg ${
-                          bgMode === "color" ? "bg-emerald-500" : "bg-transparent"
-                        }`}
-                      >
-                        <Palette
-                          size={14}
-                          color={
-                            bgMode === "color"
-                              ? "#ffffff"
-                            : "#71717a"
-                          }
-                        />
-                        <Text
-                          className={`text-xs font-bold ${
-                            bgMode === "color"
-                              ? "text-white"
-                              : "text-zinc-600"
-                          }`}
-                        >
-                          Solid Color
-                        </Text>
-                      </Pressable>
-                    </View>
-
-                    {bgMode === "image" ? (
-                      <View className="gap-2">
-                        <Text className="text-sm font-semibold text-zinc-700">
-                          Current image
-                        </Text>
-                        <View
-                          onLayout={(event) => setBackgroundPreviewWidth(event.nativeEvent.layout.width)}
-                          className="rounded-2xl overflow-hidden border border-zinc-200 bg-gray-100"
-                          style={{
-                            height: sceneImageSize.width > 0 && sceneImageSize.height > 0 && backgroundPreviewWidth > 0
-                              ? Math.min(260, Math.max(112, backgroundPreviewWidth * sceneImageSize.height / sceneImageSize.width))
-                              : 112,
-                          }}
-                        >
-                          {sceneImage ? (
-                            <Image
-                              source={{ uri: sceneImage }}
-                              resizeMode="contain"
-                              style={{ width: "100%", height: "100%" }}
-                            />
-                          ) : (
-                            <View className="flex-1 items-center justify-center gap-2">
-                              <ImageIcon size={22} color="#A1A1AA" />
-                              <Text className="text-xs font-semibold text-zinc-400">
-                                No image found for this link
-                              </Text>
-                            </View>
-                          )}
-                          <Pressable
-                            onPress={pickBackgroundImage}
-                            className="absolute right-2 bottom-2 px-3 py-2 rounded-full bg-white/95 border border-zinc-200 active:opacity-80"
-                          >
-                            <Text className="text-xs font-bold text-zinc-800">
-                              Change
-                            </Text>
-                          </Pressable>
-                        </View>
-                      </View>
-                    ) : (
-                      <View className="gap-3">
-                      {sceneImage ? (
-                        <View className="gap-2">
-                          <View className="flex-row items-center justify-between">
-                            <Text className="text-sm font-semibold text-zinc-700">Pick from image</Text>
-                            <Pressable
-                              onPress={() =>
-                                eyedropperActive ? closeEyedropper() : openEyedropper()
-                              }
-                              className={`px-3 py-2 rounded-full border flex-row items-center gap-1.5 ${
-                                eyedropperActive
-                                  ? "bg-emerald-500 border-emerald-500"
-                                  : "bg-gray-100 border-zinc-200"
-                              }`}
-                            >
-                              <Pipette size={14} color={eyedropperActive ? "#ffffff" : "#52525b"} />
-                              <Text className={`text-xs font-bold ${eyedropperActive ? "text-white" : "text-zinc-700"}`}>
-                                {eyedropperActive ? "On" : "Eyedropper"}
-                              </Text>
-                            </Pressable>
-                          </View>
-                        </View>
-                      ) : null}
-                      <ScrollView
-                        horizontal
-                        showsHorizontalScrollIndicator={false}
-                        contentContainerStyle={{ gap: 10 }}
-                      >
-                        {BG_PRESETS.map((preset) => {
-                          const isActive =
-                            bgColor.toLowerCase() === preset.value.toLowerCase();
-                          return (
-                            <Pressable
-                              key={preset.value}
-                              onPress={() => applyCustomColor(preset.value)}
-                              accessibilityLabel={preset.label}
-                              className={`w-12 h-12 rounded-2xl border-2 items-center justify-center ${
-                                isActive
-                                  ? "border-emerald-500"
-                                  : "border-zinc-300"
-                              }`}
-                              style={{ backgroundColor: preset.value }}
-                            >
-                              {isActive ? (
-                                <Check size={16} color="#ffffff" strokeWidth={3} />
-                              ) : null}
-                            </Pressable>
-                          );
-                        })}
-                      </ScrollView>
-                      {/* Custom color: any color via hex, saturation square, or hue slider */}
-                      <View className="gap-2">
-                        <View className="flex-row items-center justify-between">
-                          <Text className="text-sm font-semibold text-zinc-700">
-                            Pick color
-                          </Text>
-                          <View className="flex-row items-center gap-2">
-                            <View
-                              className="w-8 h-8 rounded-full border border-zinc-300"
-                              style={{ backgroundColor: bgColor }}
-                            />
-                            <TextInput
-                              value={hexText}
-                              onChangeText={setHexText}
-                              onSubmitEditing={() => {
-                                if (!applyCustomColor(hexText)) setHexText(bgColor);
-                              }}
-                              placeholder="#0B0B12"
-                              placeholderTextColor="#a1a1aa"
-                              autoCapitalize="none"
-                              autoCorrect={false}
-                              className="w-28 border rounded-xl px-3 h-10 text-sm font-medium bg-gray-100 border-zinc-200 text-zinc-900"
-                            />
-                          </View>
-                        </View>
-                      <GestureDetector gesture={svGesture}>
-                      <View
-                        onLayout={(e) => {
-                          // eslint-disable-next-line react-hooks/immutability
-                          svW.value = e.nativeEvent.layout.width;
-                          // eslint-disable-next-line react-hooks/immutability
-                          svH.value = e.nativeEvent.layout.height;
-                        }}
-                        style={{
-                          height: 148,
-                          borderRadius: 12,
-                          overflow: "hidden",
-                          backgroundColor: `hsl(${customHsv.h}, 100%, 50%)`,
-                        }}
-                      >
-                        <LinearGradient
-                          colors={["rgba(255,255,255,1)", "rgba(255,255,255,0)"]}
-                          start={{ x: 0, y: 0 }}
-                          end={{ x: 1, y: 0 }}
-                          style={{
-                            position: "absolute",
-                            top: 0,
-                            left: 0,
-                            right: 0,
-                            bottom: 0,
-                          }}
-                        />
-                        <LinearGradient
-                          colors={["rgba(0,0,0,0)", "rgba(0,0,0,1)"]}
-                          start={{ x: 0, y: 0 }}
-                          end={{ x: 0, y: 1 }}
-                          style={{
-                            position: "absolute",
-                            top: 0,
-                            left: 0,
-                            right: 0,
-                            bottom: 0,
-                          }}
-                        />
-                        <Animated.View
-                          style={[
-                            {
-                              position: "absolute",
-                              left: 0,
-                              top: 0,
-                              width: 22,
-                              height: 22,
-                              borderRadius: 11,
-                              backgroundColor: customHex,
-                              borderWidth: 3,
-                              borderColor: "#FFFFFF",
-                              shadowColor: "#000000",
-                              shadowOffset: { width: 0, height: 1 },
-                              shadowOpacity: 0.3,
-                              shadowRadius: 2,
-                              elevation: 3,
-                            },
-                            svThumbStyle,
-                          ]}
-                        />
-                      </View>
-                      </GestureDetector>
-                      <GestureDetector gesture={hueGesture}>
-                      <View
-                        onLayout={(e) => {
-                          // eslint-disable-next-line react-hooks/immutability
-                          hueW.value = e.nativeEvent.layout.width;
-                        }}
-                        style={{ height: 28, borderRadius: 999, overflow: "hidden" }}
-                      >
-                        <LinearGradient
-                          colors={[
-                            "#ff0000",
-                            "#ffff00",
-                            "#00ff00",
-                            "#00ffff",
-                            "#0000ff",
-                            "#ff00ff",
-                            "#ff0000",
-                          ]}
-                          start={{ x: 0, y: 0 }}
-                          end={{ x: 1, y: 0 }}
-                          style={{
-                            position: "absolute",
-                            top: 0,
-                            left: 0,
-                            right: 0,
-                            bottom: 0,
-                          }}
-                        />
-                        <Animated.View
-                          style={[
-                            {
-                              position: "absolute",
-                              left: 0,
-                              top: 3,
-                              width: 22,
-                              height: 22,
-                              borderRadius: 11,
-                              backgroundColor: customHex,
-                              borderWidth: 3,
-                              borderColor: "#FFFFFF",
-                              shadowColor: "#000000",
-                              shadowOffset: { width: 0, height: 1 },
-                              shadowOpacity: 0.3,
-                              shadowRadius: 2,
-                              elevation: 3,
-                            },
-                            hueThumbStyle,
-                          ]}
-                        />
-                      </View>
-                      </GestureDetector>
-                      </View>
-                    </View>
-                    )}
-                  </View>
-                ) : null}
-                {activeTool === "blur" ? (
-                  <View className="gap-2">
-                    <View className="flex-row items-center justify-between">
-                      <View className="flex-row items-center gap-1.5">
-                        <Droplets size={14} color="#71717a" />
-                        <Text className="text-xs font-bold tracking-wider uppercase text-zinc-500">
-                          Blur strength
-                        </Text>
-                      </View>
-                      <Text className="text-sm font-bold text-emerald-500">{blurStrength}</Text>
-                    </View>
-                    <ValueSlider value={blurStrength} maximumValue={24} step={1} onChange={setBlurStrength} />
-                  </View>
-                ) : null}
-                {activeTool === "vignette" ? (
-                  <View className="gap-2">
-                    <View className="flex-row items-center justify-between">
-                      <View className="flex-row items-center gap-1.5">
-                        <CircleDot size={14} color="#71717a" />
-                        <Text className="text-xs font-bold tracking-wider uppercase text-zinc-500">
-                          Vignette
-                        </Text>
-                      </View>
-                      <Text className="text-sm font-bold text-emerald-500">{vignetteStrength}%</Text>
-                    </View>
-                    <ValueSlider value={vignetteStrength} maximumValue={100} step={1} onChange={setVignetteStrength} />
-                  </View>
-                ) : null}
-                {/* Card Details (author / read time / date / location) */}
-                {activeTool === "details" ? (
-                  <View className="gap-2">
-                    <View className="flex-row items-center gap-1.5">
-                      <PenLine
-                        size={14}
-                        color="#71717a"
-                      />
-                      <Text
-                        className={`text-xs font-bold tracking-wider uppercase ${
-                          "text-zinc-500"
-                        }`}
-                      >
-                        Card Details
-                      </Text>
-                    </View>
-                    <View className="gap-2">
-                      {themeFields(theme).map((field) => (
-                        <TextInput
-                          key={field.key}
-                          value={field.value}
-                          onChangeText={field.setter}
-                          placeholder={field.placeholder}
-                          placeholderTextColor="#a1a1aa"
-                          keyboardType={field.keyboard}
-                          className={`border rounded-xl px-3.5 h-11 text-sm font-medium ${
-                            "bg-gray-100 border-zinc-200 text-zinc-900"
-                          }`}
-                          autoCapitalize="none"
-                          autoCorrect={false}
-                        />
-                      ))}
-                      {theme === "tweet" ? (
+                  {/* Bottom editor toolbar */}
+                  <View
+                    className="flex-row items-center px-2 py-2"
+                    style={{
+                      backgroundColor: isDarkMode ? "#18181B" : "#FFFFFF",
+                    }}
+                  >
+                    {TOOLS.map((tool) => {
+                      const Icon = tool.icon;
+                      const isActive = activeTool === tool.id;
+                      return (
                         <Pressable
-                          onPress={() => setTweetVerified(!tweetVerified)}
-                          className={`flex-row items-center justify-between border rounded-xl px-3.5 h-11 ${
-                            "bg-gray-100 border-zinc-200"
-                          }`}
+                          key={tool.id}
+                          onPress={() => selectTool(tool.id)}
+                          className="flex-1 min-h-14 items-center justify-center gap-1 rounded-2xl active:opacity-80"
+                          style={
+                            isActive
+                              ? {
+                                  backgroundColor: isDarkMode
+                                    ? "rgba(16,185,129,0.22)"
+                                    : "rgba(16,185,129,0.16)",
+                                }
+                              : undefined
+                          }
                         >
+                          <Icon
+                            size={20}
+                            color={
+                              isActive
+                                ? "#10b981"
+                                : isDarkMode
+                                  ? "#d4d4d8"
+                                  : "#52525b"
+                            }
+                            strokeWidth={isActive ? 2.5 : 2}
+                          />
                           <Text
-                            className={`text-sm font-medium ${
-                              "text-zinc-700"
-                            }`}
+                            style={{
+                              fontSize: 10,
+                              fontWeight: "700",
+                              color: isActive
+                                ? "#10b981"
+                                : isDarkMode
+                                  ? "#a1a1aa"
+                                  : "#71717a",
+                            }}
                           >
-                            Verified badge
+                            {tool.label}
                           </Text>
-                          <View
-                            className={`px-3 py-1 rounded-full ${
-                              tweetVerified ? "bg-emerald-500" : "bg-zinc-500/30"
-                            }`}
-                          >
-                            <Text className="text-white text-xs font-bold">
-                              {tweetVerified ? "On" : "Off"}
-                            </Text>
-                          </View>
                         </Pressable>
-                      ) : null}
-                      {theme === "youtube" ? (
-                        <ScrollView
-                          horizontal
-                          showsHorizontalScrollIndicator={false}
-                          contentContainerStyle={{ gap: 8 }}
-                        >
-                          {(
-                            [
-                              { value: "", label: "Auto" },
-                              { value: "video", label: "Video" },
-                              { value: "short", label: "Short" },
-                              { value: "live", label: "Live" },
-                              { value: "premiere", label: "Premiere" },
-                            ] as { value: YouTubeKind | ""; label: string }[]
-                          ).map((k) => {
-                            const isActive = ytKind === k.value;
-                            return (
-                              <Pressable
-                                key={k.label}
-                                onPress={() => setYtKind(k.value)}
-                                className={`px-4 py-2 rounded-full border ${
-                                  isActive
-                                    ? "bg-emerald-500/20 border-emerald-500"
-                                    : "bg-gray-100 border-zinc-200"
-                                }`}
-                              >
-                                <Text
-                                  className={`text-xs font-semibold ${
-                                    isActive
-                                      ? "text-emerald-500"
-                                      : "text-zinc-600"
-                                  }`}
-                                >
-                                  {k.label}
-                                </Text>
-                              </Pressable>
-                            );
-                          })}
-                        </ScrollView>
-                      ) : null}
-                      {theme === "stream" ? (
-                        <ScrollView
-                          horizontal
-                          showsHorizontalScrollIndicator={false}
-                          contentContainerStyle={{ gap: 8 }}
-                        >
-                          {(
-                            [
-                              { value: "", label: "Auto" },
-                              { value: "live", label: "Live" },
-                              { value: "clip", label: "Clip" },
-                              { value: "video", label: "VOD" },
-                              { value: "channel", label: "Channel" },
-                            ] as { value: TwitchKind | ""; label: string }[]
-                          ).map((k) => {
-                            const isActive = streamKind === k.value;
-                            return (
-                              <Pressable
-                                key={k.label}
-                                onPress={() => setStreamKind(k.value)}
-                                className={`px-4 py-2 rounded-full border ${
-                                  isActive
-                                    ? "bg-emerald-500/20 border-emerald-500"
-                                    : "bg-gray-100 border-zinc-200"
-                                }`}
-                              >
-                                <Text
-                                  className={`text-xs font-semibold ${
-                                    isActive
-                                      ? "text-emerald-500"
-                                      : "text-zinc-600"
-                                  }`}
-                                >
-                                  {k.label}
-                                </Text>
-                              </Pressable>
-                            );
-                          })}
-                        </ScrollView>
-                      ) : null}
-                    </View>
+                      );
+                    })}
                   </View>
-                ) : null}
-                  </ScrollView>
                 </View>
-              ) : null}
+              </View>
+            ) : null}
 
-              {/* Bottom editor toolbar */}
+            {/* Share row (edit mode hides it) */}
+            {!editing ? (
               <View
-                className="flex-row items-center px-2 py-2"
-                style={{ backgroundColor: isDarkMode ? "#18181B" : "#FFFFFF" }}
+                onLayout={(e) => setShareRowHeight(e.nativeEvent.layout.height)}
+                className="flex-row justify-between gap-2 mt-1"
               >
-                {TOOLS.map((tool) => {
-                  const Icon = tool.icon;
-                  const isActive = activeTool === tool.id;
+                {SHARE_TARGETS.filter((t) => available[t.id]).map((t) => {
+                  const busy = sharingTarget === t.id;
                   return (
                     <Pressable
-                      key={tool.id}
-                      onPress={() => selectTool(tool.id)}
-                      className="flex-1 min-h-14 items-center justify-center gap-1 rounded-2xl active:opacity-80"
-                      style={
-                        isActive
-                          ? { backgroundColor: isDarkMode ? "rgba(16,185,129,0.22)" : "rgba(16,185,129,0.16)" }
-                          : undefined
-                      }
+                      key={t.id}
+                      onPress={() => handleShare(t.id)}
+                      disabled={sharingTarget !== null}
+                      className="flex-1 items-center gap-1.5 py-1"
                     >
-                      <Icon
-                        size={20}
-                        color={isActive ? "#10b981" : isDarkMode ? "#d4d4d8" : "#52525b"}
-                        strokeWidth={isActive ? 2.5 : 2}
-                      />
-                      <Text
-                        style={{
-                          fontSize: 10,
-                          fontWeight: "700",
-                          color: isActive ? "#10b981" : isDarkMode ? "#a1a1aa" : "#71717a",
-                        }}
+                      <View
+                        className={`w-11 h-11 rounded-full items-center justify-center ${
+                          sharingTarget !== null && !busy ? "opacity-40" : ""
+                        }`}
+                        style={{ backgroundColor: t.color }}
                       >
-                        {tool.label}
+                        {busy ? (
+                          <ActivityIndicator color="#ffffff" size="small" />
+                        ) : (
+                          <TargetIcon target={t.id} />
+                        )}
+                      </View>
+                      <Text
+                        className={`text-[11px] font-bold ${
+                          isDarkMode ? "text-zinc-300" : "text-zinc-600"
+                        }`}
+                      >
+                        {t.label}
                       </Text>
                     </Pressable>
                   );
                 })}
               </View>
-              </View>
-              </View>
-              ) : null}
-
-              {/* Share row (edit mode hides it) */}
-              {!editing ? (
-                <View
-                  onLayout={(e) => setShareRowHeight(e.nativeEvent.layout.height)}
-                  className="flex-row justify-between gap-2 mt-1"
-                >
-                  {SHARE_TARGETS.filter((t) => available[t.id]).map((t) => {
-                    const busy = sharingTarget === t.id;
-                    return (
-                      <Pressable
-                        key={t.id}
-                        onPress={() => handleShare(t.id)}
-                        disabled={sharingTarget !== null}
-                        className="flex-1 items-center gap-1.5 py-1"
-                      >
-                        <View
-                          className={`w-11 h-11 rounded-full items-center justify-center ${
-                            sharingTarget !== null && !busy ? "opacity-40" : ""
-                          }`}
-                          style={{ backgroundColor: t.color }}
-                        >
-                          {busy ? (
-                            <ActivityIndicator color="#ffffff" size="small" />
-                          ) : (
-                            <TargetIcon target={t.id} />
-                          )}
-                        </View>
-                        <Text
-                          className={`text-[11px] font-bold ${
-                            isDarkMode ? "text-zinc-300" : "text-zinc-600"
-                          }`}
-                        >
-                          {t.label}
-                        </Text>
-                      </Pressable>
-                    );
-                  })}
-                </View>
-              ) : null}
+            ) : null}
           </KeyboardAvoidingView>
         ) : null}
       </SafeAreaView>
