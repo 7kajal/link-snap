@@ -4,7 +4,9 @@ import {
   StyleSheet,
   Text,
   View,
+  type ImageStyle,
   type LayoutChangeEvent,
+  type StyleProp,
   type ViewProps,
 } from "react-native";
 import {
@@ -46,6 +48,7 @@ export type CardTheme = "editorial" | "spotlight" | "tweet" | "youtube" | "clip"
 export type AspectRatio = "story" | "square";
 export type CardBackgroundMode = "image" | "color";
 export type CardColorScheme = "light" | "dark";
+export type CardImageFit = "cover" | "contain";
 
 type CardColors = {
   surface: string;
@@ -78,9 +81,24 @@ const DARK_CARD_COLORS: CardColors = {
 };
 
 const CardColorsContext = createContext<CardColors>(LIGHT_CARD_COLORS);
+const CardImageFitContext = createContext<CardImageFit>("cover");
 
 function useCardColors() {
   return useContext(CardColorsContext);
+}
+
+function CardMedia({ uri, style }: { uri: string; style: StyleProp<ImageStyle> }) {
+  const imageFit = useContext(CardImageFitContext);
+  if (imageFit === "cover") {
+    return <Image source={{ uri }} style={style} resizeMode="cover" />;
+  }
+  return (
+    <View style={style}>
+      <Image source={{ uri }} style={styles.cardMediaFill} resizeMode="cover" blurRadius={18} />
+      <View style={[styles.cardMediaFill, styles.cardMediaVeil]} />
+      <Image source={{ uri }} style={styles.cardMediaFill} resizeMode="contain" />
+    </View>
+  );
 }
 
 export type LinkCardViewProps = ViewProps & {
@@ -92,6 +110,8 @@ export type LinkCardViewProps = ViewProps & {
   safeMode?: boolean;
   /** Light or dark styling for templates that support both appearances. */
   colorScheme?: CardColorScheme;
+  /** How content images fill their frames. */
+  imageFit?: CardImageFit;
   /** Scene background mode: "image" uses a blurred backdrop, "color" uses a solid fill. */
   bgMode?: CardBackgroundMode;
   /** Solid background color when bgMode is "color". */
@@ -554,6 +574,7 @@ const LinkCardView = forwardRef<View, LinkCardViewProps>(function LinkCardView(
     aspectRatio = "story",
     safeMode = false,
     colorScheme = "light",
+    imageFit = "cover",
     bgMode = "image",
     bgColor = "#0B0B12",
     backgroundImage,
@@ -614,6 +635,7 @@ const LinkCardView = forwardRef<View, LinkCardViewProps>(function LinkCardView(
   const title = preview?.title?.trim() || "Paste a link to generate your story card";
   const excerpt = preview?.description?.trim() || "";
   const publisher = publisherFrom(preview || null, url);
+  const previewImage = preview?.imageFallback || preview?.image || null;
   const palette = getPalette(domainFromUrl(url));
   const authorName = cleanAuthor(author || preview?.author, publisher);
   const minutes = readMinutesOf(readMinutes, preview || null);
@@ -705,7 +727,7 @@ const LinkCardView = forwardRef<View, LinkCardViewProps>(function LinkCardView(
           streamer={authorName}
           login={stLogin}
           avatar={(avatarUrl || "").trim() || preview?.avatar || null}
-          thumb={preview?.image || null}
+          thumb={previewImage}
           game={stGame}
           viewers={stViewers}
           durationSec={stDuration}
@@ -736,7 +758,7 @@ const LinkCardView = forwardRef<View, LinkCardViewProps>(function LinkCardView(
           location={inLocation}
           salary={inSalary}
           jobType={inJobType}
-          image={preview?.image || null}
+          image={previewImage}
           posted={timeAgo(preview?.publishedAt || null)}
         />
       );
@@ -747,7 +769,7 @@ const LinkCardView = forwardRef<View, LinkCardViewProps>(function LinkCardView(
         <RestaurantCard
           brand={brand}
           title={title}
-          image={preview?.image || null}
+          image={previewImage}
           cuisine={reCuisine}
           location={inLocation}
           price={cPrice}
@@ -762,7 +784,7 @@ const LinkCardView = forwardRef<View, LinkCardViewProps>(function LinkCardView(
         <PinterestCard
           title={title}
           description={excerpt}
-          image={preview?.image || null}
+          image={previewImage}
           authorName={authorName}
         />
       );
@@ -773,7 +795,7 @@ const LinkCardView = forwardRef<View, LinkCardViewProps>(function LinkCardView(
           platform={preview?.appPlatform ?? null}
           title={title}
           description={excerpt}
-          image={preview?.image || null}
+          image={previewImage}
           developer={authorName}
           category={apCategory}
           downloads={apDownloads}
@@ -792,7 +814,7 @@ const LinkCardView = forwardRef<View, LinkCardViewProps>(function LinkCardView(
           price={cPrice}
           rating={cRating}
           reviews={cReviews}
-          image={preview?.image || null}
+          image={previewImage}
         />
       );
     }
@@ -801,7 +823,7 @@ const LinkCardView = forwardRef<View, LinkCardViewProps>(function LinkCardView(
         <GameCard
           title={title}
           description={excerpt}
-          image={preview?.image || null}
+          image={previewImage}
           genre={gmGenre}
           releaseDate={gmRelease}
           metacritic={cRating}
@@ -817,7 +839,7 @@ const LinkCardView = forwardRef<View, LinkCardViewProps>(function LinkCardView(
           pages={bkPages}
           rating={cRating}
           reviews={cReviews}
-          image={preview?.image || null}
+          image={previewImage}
         />
       );
     }
@@ -836,7 +858,7 @@ const LinkCardView = forwardRef<View, LinkCardViewProps>(function LinkCardView(
         <CommerceCard
           store={store}
           title={title}
-          image={preview?.image || null}
+          image={previewImage}
           price={cPrice}
           mrp={cMrp}
           rating={cRating}
@@ -864,7 +886,7 @@ const LinkCardView = forwardRef<View, LinkCardViewProps>(function LinkCardView(
           kind={spKind}
           title={title}
           artist={authorName}
-          cover={preview?.image || null}
+          cover={previewImage}
         />
       );
     }
@@ -874,7 +896,7 @@ const LinkCardView = forwardRef<View, LinkCardViewProps>(function LinkCardView(
           subreddit={rdSub}
           title={title}
           selftext={excerpt}
-          image={preview?.image || null}
+          image={previewImage}
           authorName={authorName}
           views={viewsResolved}
           score={rdScore}
@@ -890,7 +912,7 @@ const LinkCardView = forwardRef<View, LinkCardViewProps>(function LinkCardView(
           caption={title}
           authorName={authorName}
           handle={tweetHandle}
-          poster={preview?.image || null}
+          poster={previewImage}
           views={viewsResolved}
           likes={likeCount}
           comments={replyCount}
@@ -905,7 +927,7 @@ const LinkCardView = forwardRef<View, LinkCardViewProps>(function LinkCardView(
           isStory={isStory}
           title={title}
           channel={authorName}
-          thumb={preview?.image || null}
+          thumb={previewImage}
           channelAvatar={avatar}
           durationSec={ytDuration}
           views={viewsResolved}
@@ -944,7 +966,7 @@ const LinkCardView = forwardRef<View, LinkCardViewProps>(function LinkCardView(
           minutes={minutes}
           dateLabel={dateLabel}
           pill={pill}
-          image={preview?.image || null}
+          image={previewImage}
         />
       );
     }
@@ -954,9 +976,9 @@ const LinkCardView = forwardRef<View, LinkCardViewProps>(function LinkCardView(
         cardWidth={width}
         title={title}
         excerpt={excerpt}
-        authorName={authorName}
+        publisher={publisher}
         minutes={minutes}
-        image={preview?.image || null}
+        image={previewImage}
         favicon={favicon ?? preview?.favicon ?? null}
       />
     );
@@ -972,9 +994,11 @@ const LinkCardView = forwardRef<View, LinkCardViewProps>(function LinkCardView(
     >
       {width > 0 ? (
         <>
-          <SceneBackdrop image={backgroundImage ?? preview?.image ?? null} palette={palette} mode={bgMode} solidColor={bgColor} blur={blurRadius} vignette={vignette} />
+          <SceneBackdrop image={backgroundImage ?? previewImage} palette={palette} mode={bgMode} solidColor={bgColor} blur={blurRadius} vignette={vignette} />
           <View style={[styles.scene, { paddingTop: safeTop, paddingBottom: safeBottom }]}>
-            <CardShell theme={theme} colorScheme={colorScheme}>{renderTheme()}</CardShell>
+            <CardImageFitContext.Provider value={imageFit}>
+              <CardShell theme={theme} colorScheme={colorScheme}>{renderTheme()}</CardShell>
+            </CardImageFitContext.Provider>
           </View>
         </>
       ) : null}
@@ -1020,7 +1044,7 @@ function ClipCard({
       </Text>
       {poster ? (
         <View style={styles.clipPosterWrap}>
-          <Image source={{ uri: poster }} style={styles.clipPoster} resizeMode="cover" />
+          <CardMedia uri={poster} style={styles.clipPoster} />
         </View>
       ) : null}
       {!hideCounts && (views != null || likes != null || comments != null) ? (
@@ -1102,7 +1126,7 @@ function PostCard({
       ) : null}
       {image ? (
         <View style={styles.postThumbWrap}>
-          <Image source={{ uri: image }} style={styles.postThumb} resizeMode="cover" />
+          <CardMedia uri={image} style={styles.postThumb} />
         </View>
       ) : null}
       <View style={styles.postFooter}>
@@ -1170,7 +1194,7 @@ function MusicCard({
       </View>
       <View style={styles.musicRow}>
         {cover ? (
-          <Image source={{ uri: cover }} style={styles.musicCover} resizeMode="cover" />
+          <CardMedia uri={cover} style={styles.musicCover} />
         ) : (
           <View style={[styles.musicCover, styles.musicCoverFallback]}>
             <Music size={26} color="#1DB954" strokeWidth={1.5} />
@@ -1384,7 +1408,7 @@ function StreamCard({
       ) : null}
       {thumb ? (
         <View style={styles.stThumbWrap}>
-          <Image source={{ uri: thumb }} style={styles.stThumb} resizeMode="cover" />
+          <CardMedia uri={thumb} style={styles.stThumb} />
           {!live && kind !== "channel" && kind !== "clip" && durationSec != null ? (
             <View style={styles.stDuration}>
               <Text style={styles.stDurationText}>{formatDuration(durationSec)}</Text>
@@ -1428,7 +1452,7 @@ function CommerceCard({
     <View style={[styles.com, { backgroundColor: colors.surface }]}>
       {image ? (
         <View style={styles.comImageWrap}>
-          <Image source={{ uri: image }} style={styles.comImage} resizeMode="cover" />
+          <CardMedia uri={image} style={styles.comImage} />
         </View>
       ) : null}
       <View style={[styles.comStore, { backgroundColor: meta.color }]}>
@@ -1610,7 +1634,7 @@ function IndeedCard({
       </View>
       {image ? (
         <View style={styles.inImageWrap}>
-          <Image source={{ uri: image }} style={styles.inImage} resizeMode="cover" />
+          <CardMedia uri={image} style={styles.inImage} />
         </View>
       ) : null}
       <Text style={[styles.inTitle, { color: colors.primary }]} numberOfLines={2}>
@@ -1703,7 +1727,7 @@ function RestaurantCard({
       </View>
       {image ? (
         <View style={styles.reImageWrap}>
-          <Image source={{ uri: image }} style={styles.reImage} resizeMode="cover" />
+          <CardMedia uri={image} style={styles.reImage} />
         </View>
       ) : null}
       <Text style={[styles.reTitle, { color: colors.primary }]} numberOfLines={1}>
@@ -1765,7 +1789,7 @@ function PinterestCard({
       </View>
       {image ? (
         <View style={styles.piImageWrap}>
-          <Image source={{ uri: image }} style={styles.piImage} resizeMode="cover" />
+          <CardMedia uri={image} style={styles.piImage} />
         </View>
       ) : null}
       <Text style={[styles.piTitle, { color: colors.primary }]} numberOfLines={2}>
@@ -1822,7 +1846,7 @@ function AppCard({
       </View>
       <View style={styles.apRow}>
         {image ? (
-          <Image source={{ uri: image }} style={styles.apIcon} resizeMode="cover" />
+          <CardMedia uri={image} style={styles.apIcon} />
         ) : (
           <View style={[styles.apIcon, styles.apIconFallback]}>
             <Text style={styles.apIconText}>{getInitials(title).charAt(0)}</Text>
@@ -1916,7 +1940,7 @@ function StayCard({
       </View>
       {image ? (
         <View style={styles.syImageWrap}>
-          <Image source={{ uri: image }} style={styles.syImage} resizeMode="cover" />
+          <CardMedia uri={image} style={styles.syImage} />
         </View>
       ) : null}
       <Text style={[styles.syTitle, { color: colors.primary }]} numberOfLines={2}>
@@ -1977,7 +2001,7 @@ function GameCard({
       </View>
       {image ? (
         <View style={styles.gmImageWrap}>
-          <Image source={{ uri: image }} style={styles.gmImage} resizeMode="cover" />
+          <CardMedia uri={image} style={styles.gmImage} />
         </View>
       ) : null}
       <Text style={[styles.gmTitle, { color: colors.primary }]} numberOfLines={2}>
@@ -2037,7 +2061,7 @@ function BookCard({
       </View>
       <View style={styles.bkRow}>
         {image ? (
-          <Image source={{ uri: image }} style={styles.bkCover} resizeMode="cover" />
+          <CardMedia uri={image} style={styles.bkCover} />
         ) : (
           <View style={[styles.bkCover, styles.bkCoverFallback]}>
             <BookOpen size={24} color="#754C1E" strokeWidth={1.5} />
@@ -2205,7 +2229,7 @@ function YouTubeCard({
       ) : null}
       {thumb ? (
         <View style={styles.ytThumbWrap}>
-          <Image source={{ uri: thumb }} style={styles.ytThumb} resizeMode="cover" />
+          <CardMedia uri={thumb} style={styles.ytThumb} />
           {kind === "video" && durationSec != null ? (
             <View style={styles.ytDuration}>
               <Text style={styles.ytDurationText}>{formatDuration(durationSec)}</Text>
@@ -2371,7 +2395,7 @@ function DynamicCard({
   cardWidth,
   title,
   excerpt,
-  authorName,
+  publisher,
   minutes,
   image,
   favicon,
@@ -2380,7 +2404,7 @@ function DynamicCard({
   cardWidth: number;
   title: string;
   excerpt: string;
-  authorName: string;
+  publisher: string;
   minutes: number;
   image: string | null;
   favicon: string | null;
@@ -2395,11 +2419,11 @@ function DynamicCard({
         <Image source={{ uri: favicon }} style={styles.edAvatar} resizeMode="cover" />
       ) : (
         <View style={styles.edAvatar}>
-          <Text style={styles.edAvatarText}>{getInitials(authorName)}</Text>
+          <Text style={styles.edAvatarText}>{getInitials(publisher)}</Text>
         </View>
       )}
       <Text style={[styles.edAuthor, { color: colors.secondary }]} numberOfLines={1}>
-        {authorName}
+        {publisher}
       </Text>
       <Text style={[styles.edReadTime, { color: colors.muted }]} numberOfLines={1}>
         {`${minutes} min read`}
@@ -2418,7 +2442,7 @@ function DynamicCard({
     return (
       <View style={[styles.editorial, { backgroundColor: colors.surface }]}>
         <View style={[styles.dynHeroWrap, styles.dynHeroFirst, { height: heroHeight }]}>
-          <Image source={{ uri: image }} style={styles.dynHero} resizeMode="contain" />
+          <CardMedia uri={image} style={styles.dynHero} />
         </View>
         <Text style={[styles.edTitle, styles.dynTitleBelowHero, { color: colors.primary }]} numberOfLines={2}>
           {title}
@@ -2445,7 +2469,7 @@ function DynamicCard({
           </Text>
         ) : null}
         {image ? (
-          <Image source={{ uri: image }} style={styles.edThumb} resizeMode="cover" />
+          <CardMedia uri={image} style={styles.edThumb} />
         ) : null}
       </View>
       {footer}
@@ -2500,7 +2524,7 @@ function SpotlightCard({
       ) : null}
       {image ? (
         <View style={styles.spotHeroWrap}>
-          <Image source={{ uri: image }} style={styles.spotHero} resizeMode="cover" />
+          <CardMedia uri={image} style={styles.spotHero} />
         </View>
       ) : null}
       <View style={[styles.spotFooter, { borderTopColor: colors.divider }]}>
@@ -2544,6 +2568,16 @@ const styles = StyleSheet.create({
   },
   sceneBackdropVeil: {
     backgroundColor: SCENE_VEIL,
+  },
+  cardMediaFill: {
+    position: "absolute",
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+  },
+  cardMediaVeil: {
+    backgroundColor: "rgba(0, 0, 0, 0.18)",
   },
   /* scene container + floating card shell */
   scene: {

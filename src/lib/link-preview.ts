@@ -13,6 +13,8 @@ export type LinkPreview = {
   title: string;
   description: string;
   image: string | null;
+  /** Worker-backed fallback for remote images that reject direct app requests. */
+  imageFallback?: string | null;
   /** Best-effort site favicon (used by the generic card's publisher row). */
   favicon: string | null;
   siteName: string | null;
@@ -1024,6 +1026,21 @@ export function commerceStoreFromUrl(url: string): CommerceStore | null {
   } catch {
     return null;
   }
+}
+
+function amazonAsinFromUrl(url: string): string | null {
+  try {
+    const parsed = new URL(url);
+    if (!parsed.hostname.toLowerCase().includes("amazon.")) return null;
+    return parsed.pathname.match(/\/(?:dp|gp\/product)\/([A-Z0-9]{10})(?:[/?]|$)/i)?.[1].toUpperCase() || null;
+  } catch {
+    return null;
+  }
+}
+
+function amazonImageFromUrl(url: string): string | null {
+  const asin = amazonAsinFromUrl(url);
+  return asin ? `https://images-na.ssl-images-amazon.com/images/P/${asin}.01.LZZZZZZZ.jpg` : null;
 }
 
 /** Flag generic OG/markdown results from known stores as commerce. */
@@ -2127,6 +2144,8 @@ async function fetchKindlePreview(url: string): Promise<LinkPreview | null> {
   return {
     ...base,
     siteName: base.siteName || "Amazon",
+    title: ld?.title || base.title,
+    image: ld?.image || amazonImageFromUrl(url) || base.image,
     isBook: true,
     author: ld?.author || base.author,
     pages: ld?.pages ?? null,
@@ -2193,6 +2212,53 @@ function normalizeUrl(input: string): string | null {
   }
 }
 
+type ResolvedPage = { url: string; html: string };
+
+function proxiedImageUrl(url: string | null): string | null {
+  if (!url || !/^https?:\/\//i.test(url)) return url;
+  const worker = getWorkerBaseUrl();
+  return worker ? `${worker}/image?url=${encodeURIComponent(url)}` : url;
+}
+
+async function resolvePage(url: string): Promise<ResolvedPage | null> {
+  const worker = getWorkerBaseUrl();
+  if (worker) {
+    try {
+      const response = await fetch(`${worker}/resolve?url=${encodeURIComponent(url)}`);
+      if (response.ok) {
+        const payload = await response.json() as Partial<ResolvedPage>;
+        const canonical = typeof payload.url === "string" ? normalizeUrl(payload.url) : null;
+        if (canonical && typeof payload.html === "string" && payload.html.includes("<")) {
+          return { url: canonical, html: payload.html };
+        }
+      }
+    } catch {
+      // Fall back to a direct fetch on native or CORS-permissive sites.
+    }
+  }
+  try {
+    const response = await fetch(url, { headers: { Accept: "text/html,application/xhtml+xml" } });
+    if (!response.ok) return null;
+    const html = await response.text();
+    if (!html.includes("<")) return null;
+    return { url: normalizeUrl(response.url) || url, html };
+  } catch {
+    return null;
+  }
+}
+
+function withProxiedAssets(preview: LinkPreview): LinkPreview {
+  const amazonImage = commerceStoreFromUrl(preview.url) === "amazon"
+    ? amazonImageFromUrl(preview.url)
+    : null;
+  const image = amazonImage || preview.image;
+  return {
+    ...preview,
+    image,
+    imageFallback: image ? proxiedImageUrl(image) : null,
+  };
+}
+
 /**
  * Fetch a link and build a preview. Tweet/X status URLs go through the
  * no-auth oEmbed endpoint first; everything else tries raw HTML, then the
@@ -2200,128 +2266,132 @@ function normalizeUrl(input: string): string | null {
  * fetches (common on web), we fall through to the next source.
  */
 export async function fetchLinkPreview(input: string): Promise<LinkPreview> {
-  const url = normalizeUrl(input);
-  if (!url) {
+  const normalized = normalizeUrl(input);
+  if (!normalized) {
     throw new Error('Please enter a valid URL');
   }
+  const resolvedPage = await resolvePage(normalized);
+  const url = resolvedPage?.url || normalized;
+
+  const finish = (preview: LinkPreview) => withProxiedAssets(preview);
 
   if (isTweetUrl(url)) {
     const tweet = await fetchTweetPreview(url);
-    if (tweet) return tweet;
+    if (tweet) return finish(tweet);
     // oEmbed unreachable — still flag as tweet so the UI auto-switches
     // template and the user can fill details manually.
-    return tweetFallback(url);
+    return finish(tweetFallback(url));
   }
 
   if (isYouTubeUrl(url)) {
     const yt = await fetchYouTubePreview(url);
-    if (yt) return yt;
-    return youtubeFallback(url);
+    if (yt) return finish(yt);
+    return finish(youtubeFallback(url));
   }
 
   if (isTikTokUrl(url)) {
     const tt = await fetchTikTokPreview(url);
-    if (tt) return tt;
-    return tiktokFallback(url);
+    if (tt) return finish(tt);
+    return finish(tiktokFallback(url));
   }
 
   if (isTwitchUrl(url)) {
     const tw = await fetchTwitchPreview(url);
-    if (tw) return tw;
+    if (tw) return finish(tw);
     // No worker/creds — still flag as Twitch so the UI auto-switches
     // template and the user can fill details manually.
-    return twitchFallback(url);
+    return finish(twitchFallback(url));
   }
 
   if (isRedditUrl(url)) {
     const rd = await fetchRedditPreview(url);
-    if (rd) return rd;
-    return redditFallback(url);
+    if (rd) return finish(rd);
+    return finish(redditFallback(url));
   }
 
   if (isSpotifyUrl(url)) {
     const sp = await fetchSpotifyPreview(url);
-    if (sp) return sp;
-    return spotifyFallback(url);
+    if (sp) return finish(sp);
+    return finish(spotifyFallback(url));
   }
 
   if (isGitHubUrl(url)) {
     const gh = await fetchGitHubPreview(url);
-    if (gh) return gh;
-    return githubFallback(url);
+    if (gh) return finish(gh);
+    return finish(githubFallback(url));
   }
 
   if (isLinkedInUrl(url)) {
     const li = await fetchLinkedInPreview(url);
-    if (li) return li;
+    if (li) return finish(li);
     // Without a readable source the template still auto-selects.
-    return linkedInFallback(url);
+    return finish(linkedInFallback(url));
   }
 
   if (isIndeedUrl(url)) {
     const jd = await fetchIndeedPreview(url);
-    if (jd) return jd;
-    return indeedFallback(url);
+    if (jd) return finish(jd);
+    return finish(indeedFallback(url));
   }
 
   if (isZomatoUrl(url)) {
     const rz = await fetchRestaurantPreview(url, "Zomato");
-    if (rz) return rz;
-    return restaurantFallback(url, "Zomato");
+    if (rz) return finish(rz);
+    return finish(restaurantFallback(url, "Zomato"));
   }
 
   if (isSwiggyUrl(url)) {
     const rs = await fetchRestaurantPreview(url, "Swiggy");
-    if (rs) return rs;
-    return restaurantFallback(url, "Swiggy");
+    if (rs) return finish(rs);
+    return finish(restaurantFallback(url, "Swiggy"));
   }
 
   if (isPinterestUrl(url)) {
     const pn = await fetchPinterestPreview(url);
-    if (pn) return pn;
-    return pinterestFallback(url);
+    if (pn) return finish(pn);
+    return finish(pinterestFallback(url));
   }
 
   if (isAppUrl(url)) {
     const ap = await fetchAppPreview(url);
-    if (ap) return ap;
-    return appFallback(url, appPlatformFromUrl(url) ?? "ios");
+    if (ap) return finish(ap);
+    return finish(appFallback(url, appPlatformFromUrl(url) ?? "ios"));
   }
 
   if (isStayUrl(url)) {
     const st = await fetchStayPreview(url);
-    if (st) return st;
-    return stayFallback(url);
+    if (st) return finish(st);
+    return finish(stayFallback(url));
   }
 
   if (isGameUrl(url)) {
     const gm = await fetchGamePreview(url);
-    if (gm) return gm;
-    return gameFallback(url);
+    if (gm) return finish(gm);
+    return finish(gameFallback(url));
   }
 
   if (isBookUrl(url)) {
     const bk = await fetchBookPreview(url);
-    if (bk) return bk;
-    return bookFallback(url);
+    if (bk) return finish(bk);
+    return finish(bookFallback(url));
   }
 
   if (isAmazonBookUrl(url)) {
     const kd = await fetchKindlePreview(url);
-    if (kd) return kd;
+    if (kd) return finish(kd);
     // Not a book (or the page was blocked) — fall through to the Amazon
     // commerce parse so gadgets stay on the commerce template.
   }
 
   if (isLaunchUrl(url)) {
     const lc = await fetchLaunchPreview(url);
-    if (lc) return lc;
-    return launchFallback(url);
+    if (lc) return finish(lc);
+    return finish(launchFallback(url));
   }
 
   if (isEbayUrl(url)) {
     const eb = await fetchEbayPreview(url);
-    if (eb) return eb;
+    if (eb) return finish(eb);
     // fall through to the generic chain; withCommerce() still flags it
   }
 
@@ -2329,23 +2399,14 @@ export async function fetchLinkPreview(input: string): Promise<LinkPreview> {
   const store = commerceStoreFromUrl(url);
   if (store === "amazon" || store === "flipkart" || store === "meesho" || store === "aliexpress") {
     const mp = await fetchMarketplacePreview(url, store);
-    if (mp) return mp;
+    if (mp) return finish(mp);
     // fall through to the generic chain; withCommerce() still flags it
   }
 
-  let html = '';
-  try {
-    const res = await fetch(url);
-    if (res.ok) {
-      const text = await res.text();
-      if (text && text.includes('<')) html = text;
-    }
-  } catch {
-    // CORS / network error, fall through to proxy
-  }
+  const html = resolvedPage?.html || '';
 
   if (html) {
-    return withCommerce(parseOpenGraph(html, url), url);
+    return finish(withCommerce(parseOpenGraph(html, url), url));
   }
 
   const proxy = `https://r.jina.ai/${url}`;
@@ -2354,7 +2415,7 @@ export async function fetchLinkPreview(input: string): Promise<LinkPreview> {
     if (!res.ok) throw new Error();
     const text = await res.text();
     if (text) {
-      return withCommerce(parseMarkdown(text, url), url);
+      return finish(withCommerce(parseMarkdown(text, url), url));
     }
   } catch {
     // fall through
@@ -2395,10 +2456,17 @@ export function parseOpenGraph(html: string, url: string): LinkPreview {
   };
 
   const getImage = (): string | null => {
-    const og = getMeta('property', 'og:image') || getMeta('name', 'twitter:image');
+    const og =
+      getMeta('property', 'og:image:secure_url') ||
+      getMeta('property', 'og:image:url') ||
+      getMeta('property', 'og:image') ||
+      getMeta('name', 'twitter:image:src') ||
+      getMeta('name', 'twitter:image');
     if (og) return resolveUrl(og, url);
-    const tag = html.match(/<img[^>]+src=["']([^"']+)["'][^>]*>/i);
-    return tag ? resolveUrl(tag[1], url) : null;
+    const ldImage = getJsonLdImage(html);
+    if (ldImage) return resolveUrl(ldImage, url);
+    const tag = html.match(/<img[^>]+(?:data-old-hires|data-src|data-lazy-src|src)=["']([^"']+)["'][^>]*>/i);
+    return tag ? resolveUrl(decodeEntities(tag[1]), url) : null;
   };
 
   const getFavicon = (): string | null => {
@@ -2413,7 +2481,12 @@ export function parseOpenGraph(html: string, url: string): LinkPreview {
   };
 
   const getSiteName = (): string | null => {
-    return getMeta('property', 'og:site_name');
+    return (
+      getMeta('property', 'og:site_name') ||
+      getMeta('name', 'application-name') ||
+      getMeta('name', 'apple-mobile-web-app-title') ||
+      getJsonLdPublisher(html)
+    );
   };
 
   const getAuthor = (): string | null => {
@@ -2465,6 +2538,52 @@ export function parseOpenGraph(html: string, url: string): LinkPreview {
     scheduledStart: null,
     concurrentViewers: null,
   };
+}
+
+function getJsonLdNodes(html: string): Record<string, unknown>[] {
+  const nodes: Record<string, unknown>[] = [];
+  const blocks = html.match(/<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi) || [];
+  for (const block of blocks) {
+    try {
+      const value = JSON.parse(block.replace(/^<script[^>]*>/i, "").replace(/<\/script>$/i, ""));
+      const pending: unknown[] = Array.isArray(value) ? [...value] : [value];
+      while (pending.length) {
+        const item = pending.shift();
+        if (!item || typeof item !== "object") continue;
+        const node = item as Record<string, unknown>;
+        nodes.push(node);
+        if (Array.isArray(node["@graph"])) pending.push(...node["@graph"]);
+      }
+    } catch {
+      // Invalid JSON-LD is common; ignore it and keep parsing metadata.
+    }
+  }
+  return nodes;
+}
+
+function getJsonLdImage(html: string): string | null {
+  for (const node of getJsonLdNodes(html)) {
+    const image = node.image;
+    if (typeof image === "string") return image;
+    if (Array.isArray(image) && typeof image[0] === "string") return image[0];
+    if (image && typeof image === "object" && typeof (image as Record<string, unknown>).url === "string") {
+      return (image as Record<string, string>).url;
+    }
+  }
+  return null;
+}
+
+function getJsonLdPublisher(html: string): string | null {
+  for (const node of getJsonLdNodes(html)) {
+    for (const candidate of [node.publisher, node.provider, node.brand]) {
+      if (typeof candidate === "string" && candidate.trim()) return candidate.trim();
+      if (candidate && typeof candidate === "object") {
+        const name = (candidate as Record<string, unknown>).name;
+        if (typeof name === "string" && name.trim()) return name.trim();
+      }
+    }
+  }
+  return null;
 }
 
 /** Parse the `r.jina.ai` markdown reader output. */

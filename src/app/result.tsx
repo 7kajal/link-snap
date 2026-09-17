@@ -5,9 +5,12 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import {
   ArrowLeft,
+  ChevronRight,
   CircleDot,
+  Contrast,
   Download,
   Droplets,
+  GalleryHorizontal,
   Image as ImageIcon,
   Layers,
   Palette,
@@ -21,6 +24,8 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Animated as RNAnimated,
+  Easing,
   Image,
   LayoutAnimation,
   Platform,
@@ -48,6 +53,7 @@ import Svg, { Path } from "react-native-svg";
 import LinkCardView, {
   type CardBackgroundMode,
   type CardColorScheme,
+  type CardImageFit,
   type CardTheme,
 } from "@/components/link-card-view";
 import { SkeletonCard } from "@/components/skeleton-card";
@@ -108,8 +114,64 @@ const BG_PRESETS: { label: string; value: string }[] = [
   { label: "Violet", value: "#4C1D95" },
 ];
 
-type ToolId = "theme" | "bg" | "details" | "blur" | "vignette";
+type ToolId =
+  | "theme"
+  | "bg"
+  | "details"
+  | "blur"
+  | "vignette"
+  | "appearance"
+  | "fit";
 type CardAppearance = "auto" | CardColorScheme;
+type PresetCategoryId =
+  | "editorial"
+  | "social"
+  | "video"
+  | "shopping"
+  | "food"
+  | "professional"
+  | "lifestyle"
+  | "developer";
+
+type PresetCategory = {
+  id: PresetCategoryId;
+  label: string;
+  themes: CardTheme[];
+};
+
+const PRESET_NAMES: Record<CardTheme, string> = {
+  editorial: "Editorial",
+  spotlight: "Spotlight",
+  tweet: "X Post",
+  youtube: "YouTube",
+  clip: "TikTok",
+  post: "Reddit",
+  music: "Spotify",
+  repo: "GitHub",
+  commerce: "Product",
+  stream: "Twitch",
+  linkedin: "LinkedIn",
+  indeed: "Job",
+  zomato: "Zomato",
+  swiggy: "Swiggy",
+  pinterest: "Pinterest",
+  app: "App Store",
+  stay: "Stay",
+  game: "Game",
+  book: "Book",
+  launch: "Launch",
+};
+
+const PRESET_CATEGORIES: PresetCategory[] = [
+  { id: "editorial", label: "Editorial", themes: ["editorial", "spotlight", "book"] },
+  { id: "social", label: "Social", themes: ["tweet", "post", "linkedin", "pinterest"] },
+  { id: "video", label: "Video & Audio", themes: ["youtube", "clip", "stream", "music"] },
+  { id: "shopping", label: "Shopping", themes: ["commerce", "book", "app", "game"] },
+  { id: "food", label: "Food", themes: ["zomato", "swiggy"] },
+  { id: "professional", label: "Professional", themes: ["linkedin", "indeed", "launch"] },
+  { id: "lifestyle", label: "Lifestyle", themes: ["stay", "pinterest", "book"] },
+  { id: "developer", label: "Developer", themes: ["repo", "launch", "app"] },
+];
 
 type ThemeField = {
   key: string;
@@ -125,6 +187,8 @@ const TOOLS: { id: ToolId; label: string; icon: typeof Layers }[] = [
   { id: "bg", label: "BG", icon: Palette },
   { id: "blur", label: "Blur", icon: Droplets },
   { id: "vignette", label: "Vignette", icon: CircleDot },
+  { id: "appearance", label: "Theme", icon: Contrast },
+  { id: "fit", label: "Fit", icon: GalleryHorizontal },
 ];
 
 if (
@@ -260,7 +324,12 @@ export default function ResultScreen() {
 
   // Customization States
   const [theme, setTheme] = useState<CardTheme>("editorial");
+  const [presetCategory, setPresetCategory] =
+    useState<PresetCategoryId | null>(null);
+  const [presetPagerWidth, setPresetPagerWidth] = useState(0);
+  const [presetPagerProgress] = useState(() => new RNAnimated.Value(0));
   const [cardAppearance, setCardAppearance] = useState<CardAppearance>("auto");
+  const [imageFit, setImageFit] = useState<CardImageFit>("cover");
   const [bgMode, setBgMode] = useState<CardBackgroundMode>("image");
   const [bgColor, setBgColor] = useState("#0B0B12");
   const [backgroundImage, setBackgroundImage] = useState<{
@@ -272,10 +341,48 @@ export default function ResultScreen() {
   const [eyedropperActive, setEyedropperActive] = useState(false);
   const [cardFrame, setCardFrame] = useState({ w: 0, h: 0 });
   const [shareRowHeight, setShareRowHeight] = useState(0);
+  const [editorSheetHeight, setEditorSheetHeight] = useState(0);
+  const toolbarScrollRef = useRef<ScrollView>(null);
+  const [toolbarScrollX, setToolbarScrollX] = useState(0);
+  const [toolbarViewportWidth, setToolbarViewportWidth] = useState(0);
+  const [toolbarContentWidth, setToolbarContentWidth] = useState(0);
   const [blurStrength, setBlurStrength] = useState(8);
   const [vignetteStrength, setVignetteStrength] = useState(0);
   const [customHsv, setCustomHsv] = useState({ h: 240, s: 0.39, v: 0.07 });
   const [hexText, setHexText] = useState("#0B0B12");
+
+  const detectedPresetCategory = useMemo<PresetCategoryId>(() => {
+    if (!preview) return "editorial";
+    if (preview.isCommerce || preview.isBook || preview.isApp || preview.isGame)
+      return "shopping";
+    if (preview.isZomato || preview.isSwiggy) return "food";
+    if (preview.isYouTube || preview.isTikTok || preview.isTwitch || preview.isSpotify)
+      return "video";
+    if (preview.isTweet || preview.isReddit || preview.isPinterest) return "social";
+    if (preview.isLinkedIn || preview.isIndeed || preview.isLaunch)
+      return "professional";
+    if (preview.isGitHub) return "developer";
+    if (preview.isStay) return "lifestyle";
+    return "editorial";
+  }, [preview]);
+
+  const orderedPresetCategories = useMemo(() => {
+    const detected = PRESET_CATEGORIES.find(
+      (category) => category.id === detectedPresetCategory,
+    );
+    return detected
+      ? [detected, ...PRESET_CATEGORIES.filter((category) => category.id !== detected.id)]
+      : PRESET_CATEGORIES;
+  }, [detectedPresetCategory]);
+
+  useEffect(() => {
+    RNAnimated.timing(presetPagerProgress, {
+      toValue: presetCategory === null ? 0 : 1,
+      duration: 220,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start();
+  }, [presetCategory, presetPagerProgress]);
 
   // Card detail overrides (empty = auto from link metadata)
   const [author, setAuthor] = useState("");
@@ -1048,8 +1155,30 @@ export default function ResultScreen() {
 
   function selectTool(id: ToolId) {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    if (id === "theme" && activeTool !== "theme") setPresetCategory(null);
     setActiveTool((cur) => (cur === id ? null : id));
   }
+
+  const toolbarScrollRange = Math.max(
+    0,
+    toolbarContentWidth - toolbarViewportWidth,
+  );
+  const toolbarTrackWidth = toolbarViewportWidth;
+  const toolbarThumbWidth =
+    toolbarContentWidth > 0
+      ? Math.max(
+          36,
+          Math.min(
+            toolbarTrackWidth,
+            toolbarTrackWidth * (toolbarViewportWidth / toolbarContentWidth),
+          ),
+        )
+      : toolbarTrackWidth;
+  const toolbarThumbX =
+    toolbarScrollRange > 0
+      ? (Math.min(toolbarScrollX, toolbarScrollRange) / toolbarScrollRange) *
+        (toolbarTrackWidth - toolbarThumbWidth)
+      : 0;
 
   function toggleEditing() {
     if (eyedropperActive) return;
@@ -1078,7 +1207,8 @@ export default function ResultScreen() {
     setEditing(true);
   }
 
-  const sceneImage = backgroundImage?.uri || preview?.image || null;
+  const previewImage = preview?.imageFallback || preview?.image || null;
+  const sceneImage = backgroundImage?.uri || previewImage;
 
   // Story card is 9:16 → shrink its width so it never slides under the pinned
   // bottom bar on small screens.
@@ -1086,18 +1216,76 @@ export default function ResultScreen() {
   const CARD_BOTTOM_MARGIN = 16;
   const SHARE_ROW_MIN_HEIGHT = 72;
   const containerWidth = Math.min(windowWidth - 40, 512);
+  const bottomControlsHeight = editing
+    ? editorSheetHeight || 88
+    : shareRowHeight || SHARE_ROW_MIN_HEIGHT;
+  const cardBottomReserve = shareRowHeight || SHARE_ROW_MIN_HEIGHT;
   const maxCardHeight = Math.max(
     280,
     windowHeight -
       insets.top -
       insets.bottom -
       CARD_TOP_RESERVE -
-      (shareRowHeight || SHARE_ROW_MIN_HEIGHT) -
+      cardBottomReserve -
       CARD_BOTTOM_MARGIN,
   );
   const cardWidth = Math.min(containerWidth, maxCardHeight * (9 / 16));
 
-  const originalImageSize = useImageSize(preview?.image);
+  const cardPreviewProps = {
+    preview,
+    imageFit,
+    colorScheme:
+      cardAppearance === "auto"
+        ? isDarkMode
+          ? ("dark" as const)
+          : ("light" as const)
+        : cardAppearance,
+    aspectRatio: "story" as const,
+    safeMode: true,
+    bgMode,
+    bgColor,
+    backgroundImage: sceneImage,
+    blurRadius: blurStrength,
+    vignette: vignetteStrength / 100,
+    hideCounts: !showCounts,
+    author,
+    readMinutes,
+    dateText,
+    location,
+    handle: tweetHandle,
+    verified: tweetVerified,
+    likes: tweetLikes,
+    replies: tweetReplies,
+    avatarUrl: tweetAvatar,
+    youtubeKind: ytKind,
+    duration: ytDuration,
+    watching: ytWatching,
+    subreddit: postSubreddit,
+    score: postScore,
+    price: cPrice,
+    mrp: cMrp,
+    rating: cRating,
+    seller: cSeller,
+    streamKind,
+    game: streamGame,
+    viewers: streamViewers,
+    headline: liHeadline,
+    reposts: liReposts,
+    salary: jobSalary,
+    jobType,
+    cuisine,
+    eta,
+    category: appCategory,
+    downloads: appDownloads,
+    host: stayHost,
+    genre: gameGenre,
+    releaseDate: gameRelease,
+    pages: bookPages,
+    tagline: launchTagline,
+    upvotes: launchUpvotes,
+  };
+
+  const originalImageSize = useImageSize(previewImage);
   const sceneImageSize = backgroundImage || {
     width: originalImageSize.width,
     height: originalImageSize.height,
@@ -1498,7 +1686,8 @@ export default function ResultScreen() {
           contentContainerStyle={{
             paddingHorizontal: 20,
             paddingTop: 16,
-            paddingBottom: 190,
+            paddingBottom: bottomControlsHeight + 28,
+            minHeight: windowHeight - insets.top,
           }}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
@@ -1565,7 +1754,10 @@ export default function ResultScreen() {
           ) : null}
 
           {/* Preview / Skeleton */}
-          <View className="items-center justify-center my-2">
+          <View
+            className="items-center justify-center my-2"
+            style={{ minHeight: maxCardHeight }}
+          >
             {loading ? (
               <SkeletonCard isDark={isDarkMode} style={{ width: cardWidth }} />
             ) : preview ? (
@@ -1580,34 +1772,8 @@ export default function ResultScreen() {
               >
                 <MemoLinkCardView
                   ref={cardRef}
-                  preview={preview}
+                  {...cardPreviewProps}
                   theme={theme}
-                  colorScheme={
-                    cardAppearance === "auto"
-                      ? isDarkMode
-                        ? "dark"
-                        : "light"
-                      : cardAppearance
-                  }
-                  aspectRatio="story"
-                  safeMode
-                  bgMode={bgMode}
-                  bgColor={bgColor}
-                  backgroundImage={sceneImage}
-                  blurRadius={blurStrength}
-                  vignette={vignetteStrength / 100}
-                  hideCounts={!showCounts}
-                  author={author}
-                  readMinutes={readMinutes}
-                  dateText={dateText}
-                  location={location}
-                  handle={tweetHandle}
-                  verified={tweetVerified}
-                  likes={tweetLikes}
-                  replies={tweetReplies}
-                  avatarUrl={tweetAvatar}
-                  youtubeKind={ytKind}
-                  duration={ytDuration}
                   views={
                     theme === "tweet"
                       ? tweetViews
@@ -1617,30 +1783,6 @@ export default function ResultScreen() {
                           ? clipViews
                           : ytViews
                   }
-                  watching={ytWatching}
-                  subreddit={postSubreddit}
-                  score={postScore}
-                  price={cPrice}
-                  mrp={cMrp}
-                  rating={cRating}
-                  seller={cSeller}
-                  streamKind={streamKind}
-                  game={streamGame}
-                  viewers={streamViewers}
-                  headline={liHeadline}
-                  reposts={liReposts}
-                  salary={jobSalary}
-                  jobType={jobType}
-                  cuisine={cuisine}
-                  eta={eta}
-                  category={appCategory}
-                  downloads={appDownloads}
-                  host={stayHost}
-                  genre={gameGenre}
-                  releaseDate={gameRelease}
-                  pages={bookPages}
-                  tagline={launchTagline}
-                  upvotes={launchUpvotes}
                 />
                 {eyedropperActive && sceneImage ? (
                   <>
@@ -1698,6 +1840,9 @@ export default function ResultScreen() {
           <KeyboardAvoidingView
             behavior="position"
             pointerEvents="box-none"
+            onLayout={(event) =>
+              setEditorSheetHeight(event.nativeEvent.layout.height)
+            }
             style={{
               position: "absolute",
               left: 20,
@@ -1721,10 +1866,10 @@ export default function ResultScreen() {
                   shadowOpacity: isDarkMode ? 0.3 : 0.14,
                   shadowRadius: 18,
                   elevation: 8,
-                  overflow: "hidden",
+                  overflow: "visible",
                 }}
               >
-                <View>
+                <View style={{ borderRadius: 24, overflow: "hidden" }}>
                   {activeTool ? (
                     <View
                       style={{
@@ -1739,8 +1884,8 @@ export default function ResultScreen() {
                       <ScrollView
                         style={{
                           maxHeight: Math.min(
-                            activeTool === "bg" ? 430 : 300,
-                            windowHeight * 0.48,
+                            activeTool === "bg" ? 430 : activeTool === "theme" ? 360 : 300,
+                            windowHeight * 0.52,
                           ),
                         }}
                         contentContainerStyle={{
@@ -1749,49 +1894,228 @@ export default function ResultScreen() {
                         keyboardShouldPersistTaps="handled"
                         showsVerticalScrollIndicator={false}
                       >
-                        {/* Theme Style */}
+                        {/* Preset browser */}
                         {activeTool === "theme" ? (
-                          <View className="gap-2">
-                            <View className="flex-row items-center gap-1.5">
-                              <Layers size={14} color="#71717a" />
-                              <Text className="text-xs font-bold tracking-wider uppercase text-zinc-500">
-                                Theme Style
-                              </Text>
-                            </View>
-                            <ScrollView
-                              horizontal
-                              showsHorizontalScrollIndicator={false}
-                              contentContainerStyle={{ gap: 8 }}
-                            >
-                              {(
-                                [
-                                  "editorial",
-                                  "spotlight",
-                                  "tweet",
-                                  "youtube",
-                                  "clip",
-                                  "post",
-                                  "music",
-                                  "repo",
-                                  "commerce",
-                                  "stream",
-                                  "linkedin",
-                                  "indeed",
-                                  "zomato",
-                                  "swiggy",
-                                  "pinterest",
-                                  "app",
-                                  "stay",
-                                  "game",
-                                  "book",
-                                  "launch",
-                                ] as CardTheme[]
-                              ).map((t) => {
-                                const isActive = theme === t;
+                          <View
+                            style={{ height: presetCategory === null ? 292 : 244, overflow: "hidden" }}
+                            onLayout={(event) =>
+                              setPresetPagerWidth(event.nativeEvent.layout.width)
+                            }
+                          >
+                            {presetPagerWidth > 0 ? (
+                              <>
+                              <RNAnimated.View
+                                pointerEvents={presetCategory === null ? "auto" : "none"}
+                                style={{
+                                  position: "absolute",
+                                  inset: 0,
+                                  transform: [
+                                    {
+                                      translateX: RNAnimated.multiply(
+                                        presetPagerProgress,
+                                        -presetPagerWidth,
+                                      ),
+                                    },
+                                  ],
+                                }}
+                              >
+                                <ScrollView
+                                  showsVerticalScrollIndicator={false}
+                                  contentContainerStyle={{ paddingBottom: 8 }}
+                                >
+                                  {orderedPresetCategories.map((category, index) => (
+                                    <Pressable
+                                      key={category.id}
+                                      onPress={() => setPresetCategory(category.id)}
+                                      className="min-h-[52px] flex-row items-center justify-between active:opacity-70"
+                                      style={{
+                                        borderBottomWidth:
+                                          index === orderedPresetCategories.length - 1 ? 0 : 1,
+                                        borderBottomColor: isDarkMode ? "#3F3F46" : "#E4E4E7",
+                                      }}
+                                    >
+                                      <Text
+                                        style={{
+                                          fontSize: 14,
+                                          fontWeight: "700",
+                                          color: isDarkMode ? "#F4F4F5" : "#27272A",
+                                        }}
+                                      >
+                                        {category.label}
+                                      </Text>
+                                      <View className="flex-row items-center gap-2">
+                                        <Text className="text-xs font-semibold text-zinc-400">
+                                          {category.themes.length}
+                                        </Text>
+                                        <ChevronRight size={18} color="#A1A1AA" />
+                                      </View>
+                                    </Pressable>
+                                  ))}
+                                </ScrollView>
+                              </RNAnimated.View>
+                              <RNAnimated.View
+                                pointerEvents={presetCategory === null ? "none" : "auto"}
+                                style={{
+                                  position: "absolute",
+                                  inset: 0,
+                                  transform: [
+                                    {
+                                      translateX: RNAnimated.add(
+                                        presetPagerWidth,
+                                        RNAnimated.multiply(
+                                          presetPagerProgress,
+                                          -presetPagerWidth,
+                                        ),
+                                      ),
+                                    },
+                                  ],
+                                }}
+                              >
+                                <Pressable
+                                  onPress={() => setPresetCategory(null)}
+                                  className="h-10 flex-row items-center gap-2 active:opacity-70"
+                                >
+                                  <ArrowLeft size={18} color={isDarkMode ? "#E4E4E7" : "#3F3F46"} />
+                                  <Text
+                                    style={{
+                                      fontSize: 16,
+                                      fontWeight: "700",
+                                      color: isDarkMode ? "#F4F4F5" : "#27272A",
+                                    }}
+                                  >
+                                    {PRESET_CATEGORIES.find(
+                                      (category) => category.id === presetCategory,
+                                    )?.label || "Presets"}
+                                  </Text>
+                                </Pressable>
+                                <ScrollView
+                                  horizontal
+                                  showsHorizontalScrollIndicator={false}
+                                  contentContainerStyle={{ gap: 12, paddingTop: 4, paddingBottom: 4 }}
+                                >
+                                  {(PRESET_CATEGORIES.find(
+                                    (category) => category.id === presetCategory,
+                                  )?.themes || []).map((presetTheme) => {
+                                const isActive = theme === presetTheme;
+                                const presetPreviewWidth = cardFrame.w || cardWidth;
+                                const presetScale = 96 / presetPreviewWidth;
                                 return (
                                   <Pressable
-                                    key={t}
-                                    onPress={() => setTheme(t)}
+                                    key={presetTheme}
+                                    onPress={() => setTheme(presetTheme)}
+                                    accessibilityRole="button"
+                                    accessibilityState={{ selected: isActive }}
+                                    style={{ width: 96 }}
+                                  >
+                                    <View
+                                      style={{
+                                        width: 96,
+                                        height: 96 * (16 / 9),
+                                        borderRadius: 14,
+                                        overflow: "hidden",
+                                        borderWidth: isActive ? 3 : 1,
+                                        borderColor: isActive
+                                          ? "#10B981"
+                                          : isDarkMode
+                                            ? "#3F3F46"
+                                            : "#D4D4D8",
+                                        backgroundColor: "#0B0B12",
+                                      }}
+                                    >
+                                      <View
+                                        pointerEvents="none"
+                                        style={{
+                                          width: presetPreviewWidth,
+                                          height: presetPreviewWidth * (16 / 9),
+                                          transform: [{ scale: presetScale }],
+                                          transformOrigin: [0, 0, 0],
+                                        }}
+                                      >
+                                        <MemoLinkCardView
+                                          {...cardPreviewProps}
+                                          theme={presetTheme}
+                                          views={
+                                            presetTheme === "tweet"
+                                              ? tweetViews
+                                              : presetTheme === "post"
+                                                ? postViews
+                                                : presetTheme === "clip"
+                                                  ? clipViews
+                                                  : ytViews
+                                          }
+                                        />
+                                      </View>
+                                    </View>
+                                    <Text
+                                      numberOfLines={1}
+                                      style={{
+                                        marginTop: 7,
+                                        fontSize: 12,
+                                        fontWeight: isActive ? "800" : "600",
+                                        color: isActive
+                                          ? "#10B981"
+                                          : isDarkMode
+                                            ? "#D4D4D8"
+                                            : "#52525B",
+                                        textAlign: "center",
+                                      }}
+                                    >
+                                      {PRESET_NAMES[presetTheme]}
+                                    </Text>
+                                  </Pressable>
+                                );
+                                  })}
+                                </ScrollView>
+                              </RNAnimated.View>
+                              </>
+                            ) : null}
+                          </View>
+                        ) : null}
+                        {activeTool === "appearance" ? (
+                          <View className="gap-2">
+                            <View className="flex-row gap-2">
+                              {(["auto", "light", "dark"] as CardAppearance[]).map(
+                                (appearance) => {
+                                  const isActive = cardAppearance === appearance;
+                                  return (
+                                    <Pressable
+                                      key={appearance}
+                                      onPress={() => setCardAppearance(appearance)}
+                                      accessibilityRole="button"
+                                      accessibilityState={{ selected: isActive }}
+                                      className={`px-4 py-2 rounded-full border ${
+                                        isActive
+                                          ? "bg-emerald-500/20 border-emerald-500"
+                                          : "bg-gray-100 border-zinc-200"
+                                      }`}
+                                    >
+                                      <Text
+                                        className={`text-xs font-semibold capitalize ${
+                                          isActive
+                                            ? "text-emerald-500"
+                                            : "text-zinc-600"
+                                        }`}
+                                      >
+                                        {appearance}
+                                      </Text>
+                                    </Pressable>
+                                  );
+                                },
+                              )}
+                            </View>
+                          </View>
+                        ) : null}
+                        {activeTool === "fit" ? (
+                          <View className="gap-2">
+                            <View className="flex-row gap-2">
+                              {(["cover", "contain"] as CardImageFit[]).map((fit) => {
+                                const isActive = imageFit === fit;
+                                return (
+                                  <Pressable
+                                    key={fit}
+                                    onPress={() => setImageFit(fit)}
+                                    accessibilityRole="button"
+                                    accessibilityState={{ selected: isActive }}
                                     className={`px-4 py-2 rounded-full border ${
                                       isActive
                                         ? "bg-emerald-500/20 border-emerald-500"
@@ -1805,62 +2129,17 @@ export default function ResultScreen() {
                                           : "text-zinc-600"
                                       }`}
                                     >
-                                      {t}
+                                      {fit}
                                     </Text>
                                   </Pressable>
                                 );
                               })}
-                            </ScrollView>
-                            {(
-                              <View className="mt-2 gap-2">
-                                <Text className="text-xs font-bold tracking-wider uppercase text-zinc-500">
-                                  Card Appearance
-                                </Text>
-                                <View className="flex-row gap-2">
-                                  {(["auto", "light", "dark"] as CardAppearance[]).map(
-                                    (appearance) => {
-                                      const isActive = cardAppearance === appearance;
-                                      return (
-                                        <Pressable
-                                          key={appearance}
-                                          onPress={() => setCardAppearance(appearance)}
-                                          accessibilityRole="button"
-                                          accessibilityState={{ selected: isActive }}
-                                          className={`px-4 py-2 rounded-full border ${
-                                            isActive
-                                              ? "bg-emerald-500/20 border-emerald-500"
-                                              : "bg-gray-100 border-zinc-200"
-                                          }`}
-                                        >
-                                          <Text
-                                            className={`text-xs font-semibold capitalize ${
-                                              isActive
-                                                ? "text-emerald-500"
-                                                : "text-zinc-600"
-                                            }`}
-                                          >
-                                            {appearance}
-                                          </Text>
-                                        </Pressable>
-                                      );
-                                    },
-                                  )}
-                                </View>
-                              </View>
-                            )}
+                            </View>
                           </View>
                         ) : null}
                         {/* Scene Background */}
                         {activeTool === "bg" ? (
                           <View className="gap-2">
-                            <View className="flex-row items-center gap-1.5">
-                              <Palette size={14} color="#71717a" />
-                              <Text
-                                className={`text-xs font-bold tracking-wider uppercase ${"text-zinc-500"}`}
-                              >
-                                Background
-                              </Text>
-                            </View>
                             <View
                               className={`flex-row p-1 rounded-xl ${"bg-gray-100"}`}
                             >
@@ -2160,13 +2439,7 @@ export default function ResultScreen() {
                         ) : null}
                         {activeTool === "blur" ? (
                           <View className="gap-2">
-                            <View className="flex-row items-center justify-between">
-                              <View className="flex-row items-center gap-1.5">
-                                <Droplets size={14} color="#71717a" />
-                                <Text className="text-xs font-bold tracking-wider uppercase text-zinc-500">
-                                  Blur strength
-                                </Text>
-                              </View>
+                            <View className="flex-row justify-end">
                               <Text className="text-sm font-bold text-emerald-500">
                                 {blurStrength}
                               </Text>
@@ -2181,13 +2454,7 @@ export default function ResultScreen() {
                         ) : null}
                         {activeTool === "vignette" ? (
                           <View className="gap-2">
-                            <View className="flex-row items-center justify-between">
-                              <View className="flex-row items-center gap-1.5">
-                                <CircleDot size={14} color="#71717a" />
-                                <Text className="text-xs font-bold tracking-wider uppercase text-zinc-500">
-                                  Vignette
-                                </Text>
-                              </View>
+                            <View className="flex-row justify-end">
                               <Text className="text-sm font-bold text-emerald-500">
                                 {vignetteStrength}%
                               </Text>
@@ -2203,14 +2470,6 @@ export default function ResultScreen() {
                         {/* Card Details (author / read time / date / location) */}
                         {activeTool === "details" ? (
                           <View className="gap-2">
-                            <View className="flex-row items-center gap-1.5">
-                              <PenLine size={14} color="#71717a" />
-                              <Text
-                                className={`text-xs font-bold tracking-wider uppercase ${"text-zinc-500"}`}
-                              >
-                                Card Details
-                              </Text>
-                            </View>
                             <View className="gap-2">
                               {themeFields(theme).map((field) => (
                                 <TextInput
@@ -2375,56 +2634,97 @@ export default function ResultScreen() {
 
                   {/* Bottom editor toolbar */}
                   <View
-                    className="flex-row items-center px-2 py-2"
                     style={{
                       backgroundColor: isDarkMode ? "#18181B" : "#FFFFFF",
+                      overflow: "visible",
                     }}
                   >
-                    {TOOLS.map((tool) => {
-                      const Icon = tool.icon;
-                      const isActive = activeTool === tool.id;
-                      return (
-                        <Pressable
-                          key={tool.id}
-                          onPress={() => selectTool(tool.id)}
-                          className="flex-1 min-h-14 items-center justify-center gap-1 rounded-2xl active:opacity-80"
-                          style={
-                            isActive
-                              ? {
-                                  backgroundColor: isDarkMode
-                                    ? "rgba(16,185,129,0.22)"
-                                    : "rgba(16,185,129,0.16)",
-                                }
-                              : undefined
-                          }
-                        >
-                          <Icon
-                            size={20}
-                            color={
+                    <ScrollView
+                      ref={toolbarScrollRef}
+                      horizontal
+                      showsHorizontalScrollIndicator={false}
+                      scrollEventThrottle={16}
+                      onLayout={(event) =>
+                        setToolbarViewportWidth(event.nativeEvent.layout.width)
+                      }
+                      onContentSizeChange={(width) => setToolbarContentWidth(width)}
+                      onScroll={(event) =>
+                        setToolbarScrollX(event.nativeEvent.contentOffset.x)
+                      }
+                      contentContainerStyle={{
+                        alignItems: "center",
+                        paddingHorizontal: 8,
+                        paddingTop: 8,
+                        paddingBottom: 5,
+                        gap: 4,
+                      }}
+                    >
+                      {TOOLS.map((tool) => {
+                        const Icon = tool.icon;
+                        const isActive = activeTool === tool.id;
+                        return (
+                          <Pressable
+                            key={tool.id}
+                            onPress={() => selectTool(tool.id)}
+                            className="min-h-14 min-w-16 items-center justify-center gap-1 rounded-2xl active:opacity-80"
+                            style={
                               isActive
-                                ? "#10b981"
-                                : isDarkMode
-                                  ? "#d4d4d8"
-                                  : "#52525b"
+                                ? {
+                                    backgroundColor: isDarkMode
+                                      ? "rgba(16,185,129,0.22)"
+                                      : "rgba(16,185,129,0.16)",
+                                  }
+                                : undefined
                             }
-                            strokeWidth={isActive ? 2.5 : 2}
-                          />
-                          <Text
-                            style={{
-                              fontSize: 10,
-                              fontWeight: "700",
-                              color: isActive
-                                ? "#10b981"
-                                : isDarkMode
-                                  ? "#a1a1aa"
-                                  : "#71717a",
-                            }}
                           >
-                            {tool.label}
-                          </Text>
-                        </Pressable>
-                      );
-                    })}
+                            <Icon
+                              size={20}
+                              color={
+                                isActive
+                                  ? "#10b981"
+                                  : isDarkMode
+                                    ? "#d4d4d8"
+                                    : "#52525b"
+                              }
+                              strokeWidth={isActive ? 2.5 : 2}
+                            />
+                            <Text
+                              style={{
+                                fontSize: 10,
+                                fontWeight: "700",
+                                color: isActive
+                                  ? "#10b981"
+                                  : isDarkMode
+                                    ? "#a1a1aa"
+                                    : "#71717a",
+                              }}
+                            >
+                              {tool.label}
+                            </Text>
+                          </Pressable>
+                        );
+                      })}
+                    </ScrollView>
+                    {toolbarScrollRange > 0 ? (
+                      <View
+                        style={{
+                          height: 3,
+                          borderRadius: 999,
+                          overflow: "hidden",
+                          backgroundColor: isDarkMode ? "#3F3F46" : "#E4E4E7",
+                        }}
+                      >
+                        <View
+                          style={{
+                            width: toolbarThumbWidth,
+                            height: 3,
+                            borderRadius: 999,
+                            backgroundColor: "#10B981",
+                            transform: [{ translateX: toolbarThumbX }],
+                          }}
+                        />
+                      </View>
+                    ) : null}
                   </View>
                 </View>
               </View>
