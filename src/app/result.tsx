@@ -124,13 +124,18 @@ type ToolId =
   | "fit";
 type CardAppearance = "auto" | CardColorScheme;
 type PresetCategoryId =
-  | "editorial"
+  | "custom"
+  | "blog"
   | "social"
-  | "video"
+  | "jobs"
+  | "entertainment"
+  | "podcasts"
+  | "gaming"
+  | "books"
   | "shopping"
   | "food"
-  | "professional"
-  | "lifestyle"
+  | "travel"
+  | "launch"
   | "developer";
 
 type PresetCategory = {
@@ -160,17 +165,44 @@ const PRESET_NAMES: Record<CardTheme, string> = {
   game: "Game",
   book: "Book",
   launch: "Launch",
+  ytmusic: "YouTube Music",
+  jiosaavn: "JioSaavn",
+  gaana: "Gaana",
+  applemusic: "Apple Music",
+  netflix: "Netflix",
+  primevideo: "Prime Video",
+  hotstar: "Hotstar",
+  kukufm: "Kuku FM",
+  applepodcasts: "Apple Podcasts",
+  pocketfm: "Pocket FM",
+  kindle: "Kindle",
+  wattpad: "Wattpad",
+  pratilipi: "Pratilipi",
+  webtoon: "Webtoon",
+  medium: "Medium",
+  amazon: "Amazon",
+  meesho: "Meesho",
+  flipkart: "Flipkart",
 };
 
 const PRESET_CATEGORIES: PresetCategory[] = [
-  { id: "editorial", label: "Editorial", themes: ["editorial", "spotlight", "book"] },
+  { id: "custom", label: "Custom", themes: ["editorial", "spotlight"] },
+  { id: "blog", label: "Blog", themes: ["editorial", "spotlight", "post", "medium"] },
   { id: "social", label: "Social", themes: ["tweet", "post", "linkedin", "pinterest"] },
-  { id: "video", label: "Video & Audio", themes: ["youtube", "clip", "stream", "music"] },
-  { id: "shopping", label: "Shopping", themes: ["commerce", "book", "app", "game"] },
+  { id: "jobs", label: "Jobs", themes: ["indeed", "linkedin"] },
+  {
+    id: "entertainment",
+    label: "Entertainment",
+    themes: ["youtube", "ytmusic", "netflix", "primevideo", "hotstar", "clip", "stream", "music", "jiosaavn", "gaana", "applemusic"],
+  },
+  { id: "podcasts", label: "Podcasts", themes: ["kukufm", "applepodcasts", "pocketfm"] },
+  { id: "gaming", label: "Gaming", themes: ["game"] },
+  { id: "books", label: "Book & Comics", themes: ["book", "kindle", "wattpad", "pratilipi", "webtoon"] },
+  { id: "shopping", label: "Shopping", themes: ["commerce", "app", "amazon", "meesho", "flipkart"] },
   { id: "food", label: "Food", themes: ["zomato", "swiggy"] },
-  { id: "professional", label: "Professional", themes: ["linkedin", "indeed", "launch"] },
-  { id: "lifestyle", label: "Lifestyle", themes: ["stay", "pinterest", "book"] },
-  { id: "developer", label: "Developer", themes: ["repo", "launch", "app"] },
+  { id: "travel", label: "Travel", themes: ["stay"] },
+  { id: "launch", label: "Launch", themes: ["launch"] },
+  { id: "developer", label: "Developer", themes: ["repo", "app"] },
 ];
 
 type ThemeField = {
@@ -352,18 +384,41 @@ export default function ResultScreen() {
   const [hexText, setHexText] = useState("#0B0B12");
 
   const detectedPresetCategory = useMemo<PresetCategoryId>(() => {
-    if (!preview) return "editorial";
-    if (preview.isCommerce || preview.isBook || preview.isApp || preview.isGame)
-      return "shopping";
+    if (!preview) return "custom";
+    if (preview.isCommerce || preview.isApp) return "shopping";
+    if (preview.isGame) return "gaming";
     if (preview.isZomato || preview.isSwiggy) return "food";
-    if (preview.isYouTube || preview.isTikTok || preview.isTwitch || preview.isSpotify)
-      return "video";
+    if (
+      preview.isYouTube ||
+      preview.isYouTubeMusic ||
+      preview.isTikTok ||
+      preview.isTwitch ||
+      preview.isSpotify ||
+      preview.isJioSaavn ||
+      preview.isGaana ||
+      preview.isAppleMusic ||
+      preview.isNetflix ||
+      preview.isPrimeVideo ||
+      preview.isHotstar
+    )
+      return "entertainment";
+    if (preview.isKukuFm || preview.isApplePodcasts || preview.isPocketFm)
+      return "podcasts";
     if (preview.isTweet || preview.isReddit || preview.isPinterest) return "social";
-    if (preview.isLinkedIn || preview.isIndeed || preview.isLaunch)
-      return "professional";
+    if (preview.isLinkedIn || preview.isIndeed) return "jobs";
     if (preview.isGitHub) return "developer";
-    if (preview.isStay) return "lifestyle";
-    return "editorial";
+    if (preview.isLaunch) return "launch";
+    if (preview.isStay) return "travel";
+    if (
+      preview.isBook ||
+      preview.isKindle ||
+      preview.isWattpad ||
+      preview.isPratilipi ||
+      preview.isWebtoon
+    )
+      return "books";
+    if (preview.isMedium) return "blog";
+    return "custom";
   }, [preview]);
 
   const orderedPresetCategories = useMemo(() => {
@@ -406,6 +461,8 @@ export default function ResultScreen() {
 
   // Show/hide all engagement counts on the card
   const [showCounts, setShowCounts] = useState(true);
+  // Show/hide the "N min read" label on blog/reading cards
+  const [showReadTime, setShowReadTime] = useState(true);
 
   // YouTube extras (auto from worker/scrape when available, else manual)
   const [ytKind, setYtKind] = useState<YouTubeKind | "">("");
@@ -536,7 +593,14 @@ export default function ResultScreen() {
     else if (result.isGame) setTheme("game");
     else if (result.isBook) setTheme("book");
     else if (result.isLaunch) setTheme("launch");
-    else if (result.isCommerce) setTheme("commerce");
+    else if (result.isCommerce) {
+      if (result.commerceStore === "amazon" || result.commerceStore === "meesho" || result.commerceStore === "flipkart") {
+        setTheme(result.commerceStore);
+      } else {
+        setTheme("commerce");
+      }
+    }
+    else if (result.isMedium) setTheme("medium");
   }
 
   function themeFields(t: CardTheme): ThemeField[] {
@@ -714,7 +778,7 @@ export default function ResultScreen() {
         },
       ];
     }
-    if (t === "commerce") {
+    if (t === "commerce" || t === "amazon" || t === "meesho" || t === "flipkart") {
       return [
         {
           key: "price",
@@ -1045,6 +1109,74 @@ export default function ResultScreen() {
         },
       ];
     }
+    if (t === "ytmusic" || t === "jiosaavn" || t === "gaana" || t === "applemusic") {
+      return [
+        {
+          key: "artist",
+          value: author,
+          setter: setAuthor,
+          placeholder: "Artist (e.g. Arijit Singh)",
+          keyboard: "default" as const,
+        },
+        {
+          key: "kind",
+          value: spKindLabel,
+          setter: setSpKindLabel,
+          placeholder: "Kind (e.g. Song / Album)",
+          keyboard: "default" as const,
+        },
+        {
+          key: "author",
+          value: author,
+          setter: setAuthor,
+          placeholder: "Author (e.g. Vikram Sampath)",
+          keyboard: "default" as const,
+        },
+      ];
+    }
+    if (t === "netflix" || t === "primevideo" || t === "hotstar") {
+      return [
+        {
+          key: "tagline",
+          value: excerpt,
+          setter: setExcerpt,
+          placeholder: "Tagline (e.g. Stranger Things)",
+          keyboard: "default" as const,
+        },
+        {
+          key: "meta",
+          value: pill,
+          setter: setPill,
+          placeholder: "Meta (e.g. 2016 · 12+)",
+          keyboard: "default" as const,
+        },
+      ];
+    }
+    if (t === "kindle" || t === "wattpad" || t === "pratilipi" || t === "webtoon") {
+      return [
+        {
+          key: "author",
+          value: author,
+          setter: setAuthor,
+          placeholder: "Author (e.g. J.K. Rowling)",
+          keyboard: "default" as const,
+        },
+        {
+          key: "pages",
+          value: bookPages,
+          setter: setBookPages,
+          placeholder: "Pages (e.g. 530)",
+          keyboard: "numeric" as const,
+        },
+        {
+          key: "rating",
+          value: cRating,
+          setter: setCRating,
+          placeholder: "Rating (e.g. 4.5)",
+          keyboard: "decimal-pad" as const,
+        },
+      ];
+    }
     if (t === "repo") return [];
     return [
       {
@@ -1248,6 +1380,7 @@ export default function ResultScreen() {
     blurRadius: blurStrength,
     vignette: vignetteStrength / 100,
     hideCounts: !showCounts,
+    hideReadTime: !showReadTime,
     author,
     readMinutes,
     dateText,
@@ -2510,6 +2643,31 @@ export default function ResultScreen() {
                                   >
                                     <Text className="text-white text-xs font-bold">
                                       {showCounts ? "On" : "Off"}
+                                    </Text>
+                                  </View>
+                                </Pressable>
+                              ) : null}
+                              {["editorial", "spotlight", "medium"].includes(
+                                theme,
+                              ) ? (
+                                <Pressable
+                                  onPress={() => setShowReadTime(!showReadTime)}
+                                  className={`flex-row items-center justify-between border rounded-xl px-3.5 h-11 ${"bg-gray-100 border-zinc-200"}`}
+                                >
+                                  <Text
+                                    className={`text-sm font-medium ${"text-zinc-700"}`}
+                                  >
+                                    Read time
+                                  </Text>
+                                  <View
+                                    className={`px-3 py-1 rounded-full ${
+                                      showReadTime
+                                        ? "bg-emerald-500"
+                                        : "bg-zinc-500/30"
+                                    }`}
+                                  >
+                                    <Text className="text-white text-xs font-bold">
+                                      {showReadTime ? "On" : "Off"}
                                     </Text>
                                   </View>
                                 </Pressable>

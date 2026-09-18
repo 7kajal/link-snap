@@ -11,21 +11,33 @@ import {
 } from "react-native";
 import {
   ArrowBigUp,
+  AudioLines,
+  AudioWaveform,
+  BookMarked,
   BookOpen,
   Building2,
   Check,
   Clock,
+  Disc,
   Download,
   Eye,
+  Film,
   GitFork,
+  Headphones,
   Heart,
   MapPin,
   MessageCircle,
+  MicVocal,
+  MonitorPlay,
   Music,
   Play,
+  Radio,
   Repeat2,
+  Scroll,
+  Sparkles,
   Star,
   ThumbsUp,
+  Tv,
 } from "lucide-react-native";
 import Svg, { Defs, RadialGradient, Rect, Stop } from "react-native-svg";
 import { domainFromUrl, getPalette, type Palette } from "@/lib/palette";
@@ -44,7 +56,7 @@ import {
   type YouTubeKind,
 } from "@/lib/link-preview";
 
-export type CardTheme = "editorial" | "spotlight" | "tweet" | "youtube" | "clip" | "post" | "music" | "repo" | "commerce" | "stream" | "linkedin" | "indeed" | "zomato" | "swiggy" | "pinterest" | "app" | "stay" | "game" | "book" | "launch";
+export type CardTheme = "editorial" | "spotlight" | "tweet" | "youtube" | "clip" | "post" | "music" | "repo" | "commerce" | "stream" | "linkedin" | "indeed" | "zomato" | "swiggy" | "pinterest" | "app" | "stay" | "game" | "book" | "launch" | "ytmusic" | "jiosaavn" | "gaana" | "applemusic" | "netflix" | "primevideo" | "hotstar" | "kukufm" | "applepodcasts" | "pocketfm" | "kindle" | "wattpad" | "pratilipi" | "webtoon" | "medium" | "amazon" | "meesho" | "flipkart";
 export type AspectRatio = "story" | "square";
 export type CardBackgroundMode = "image" | "color";
 export type CardColorScheme = "light" | "dark";
@@ -124,6 +136,8 @@ export type LinkCardViewProps = ViewProps & {
   vignette?: number;
   /** When true, hides all engagement counts (views/watching/likes/comments/etc.). */
   hideCounts?: boolean;
+  /** When true, hides the "N min read" label on blog/reading cards. */
+  hideReadTime?: boolean;
   /** Manual overrides from the studio controls (take precedence over parsed meta). */
   author?: string;
   readMinutes?: string;
@@ -211,6 +225,24 @@ const CARD_META: Record<CardTheme, { surface: string; radius: number; border: st
   game: { surface: "#1B2838", radius: 18, border: "rgba(255, 255, 255, 0.15)" },
   book: { surface: "#F4F1EA", radius: 18, border: "rgba(0, 0, 0, 0.08)" },
   launch: { surface: "#FFFFFF", radius: 18, border: "rgba(0, 0, 0, 0.08)" },
+  ytmusic: { surface: "#0F0F0F", radius: 20, border: "rgba(255, 255, 255, 0.15)" },
+  jiosaavn: { surface: "#111012", radius: 20, border: "rgba(255, 255, 255, 0.15)" },
+  gaana: { surface: "#0C1410", radius: 20, border: "rgba(255, 255, 255, 0.15)" },
+  applemusic: { surface: "#FAFAFA", radius: 24, border: "rgba(0, 0, 0, 0.08)" },
+  netflix: { surface: "#000000", radius: 18, border: "rgba(255, 255, 255, 0.15)" },
+  primevideo: { surface: "#0B1425", radius: 20, border: "rgba(255, 255, 255, 0.15)" },
+  hotstar: { surface: "#0F0E2A", radius: 20, border: "rgba(255, 255, 255, 0.15)" },
+  kukufm: { surface: "#1A1613", radius: 20, border: "rgba(255, 255, 255, 0.15)" },
+  applepodcasts: { surface: "#14141B", radius: 20, border: "rgba(255, 255, 255, 0.15)" },
+  pocketfm: { surface: "#08110E", radius: 22, border: "rgba(255, 255, 255, 0.15)" },
+  kindle: { surface: "#F2EFE9", radius: 18, border: "rgba(0, 0, 0, 0.08)" },
+  wattpad: { surface: "#FFFFFC", radius: 18, border: "rgba(0, 0, 0, 0.08)" },
+  pratilipi: { surface: "#FFF7ED", radius: 18, border: "rgba(0, 0, 0, 0.08)" },
+  webtoon: { surface: "#FFFFFF", radius: 18, border: "rgba(0, 0, 0, 0.08)" },
+  medium: { surface: "#FFFFFF", radius: 24, border: "rgba(0, 0, 0, 0.08)" },
+  amazon: { surface: "#FFFFFF", radius: 18, border: "rgba(0, 0, 0, 0.08)" },
+  meesho: { surface: "#FFFFFF", radius: 18, border: "rgba(0, 0, 0, 0.08)" },
+  flipkart: { surface: "#FFFFFF", radius: 18, border: "rgba(0, 0, 0, 0.08)" },
 };
 
 /**
@@ -581,6 +613,7 @@ const LinkCardView = forwardRef<View, LinkCardViewProps>(function LinkCardView(
     blurRadius = SCENE_BLUR,
     vignette = 0,
     hideCounts = false,
+    hideReadTime = false,
     author,
     readMinutes,
     dateText,
@@ -669,6 +702,8 @@ const LinkCardView = forwardRef<View, LinkCardViewProps>(function LinkCardView(
 
   // Spotify resolution (artist usually needs a manual entry)
   const spKind: SpotifyKind | null = preview?.spotifyKind || null;
+  // Brand-generic kind label for the non-Spotify music templates.
+  const mKind = spKind ? (SPOTIFY_LABEL[spKind] || spKind.toUpperCase()) : null;
 
   // Commerce resolution (price strings keep currency symbols for display)
   const store: CommerceStore = preview?.commerceStore || commerceStoreFromUrl(url) || "other";
@@ -853,6 +888,20 @@ const LinkCardView = forwardRef<View, LinkCardViewProps>(function LinkCardView(
         />
       );
     }
+    if (theme === "amazon" || theme === "meesho" || theme === "flipkart") {
+      return (
+        <CommerceCard
+          store={theme}
+          title={title}
+          image={previewImage}
+          price={cPrice}
+          mrp={cMrp}
+          rating={cRating}
+          reviews={cReviews}
+          seller={cSeller}
+        />
+      );
+    }
     if (theme === "commerce") {
       return (
         <CommerceCard
@@ -967,6 +1016,169 @@ const LinkCardView = forwardRef<View, LinkCardViewProps>(function LinkCardView(
           dateLabel={dateLabel}
           pill={pill}
           image={previewImage}
+          hideReadTime={hideReadTime}
+        />
+      );
+    }
+    //
+    if (theme === "ytmusic") {
+      return (
+        <YtMusicCard
+          title={title}
+          artist={authorName}
+          cover={previewImage}
+          kind={mKind}
+        />
+      );
+    }
+    if (theme === "jiosaavn") {
+      return (
+        <JioSaavnCard
+          title={title}
+          artist={authorName}
+          cover={previewImage}
+          kind={mKind}
+          durationSec={ytDuration}
+        />
+      );
+    }
+    if (theme === "gaana") {
+      return (
+        <GaanaCard
+          title={title}
+          artist={authorName}
+          cover={previewImage}
+          kind={mKind}
+        />
+      );
+    }
+    if (theme === "applemusic") {
+      return (
+        <AppleMusicCard
+          title={title}
+          artist={authorName}
+          cover={previewImage}
+          kind={mKind}
+        />
+      );
+    }
+    if (theme === "netflix") {
+      return (
+        <NetflixCard
+          title={title}
+          tagline={excerpt}
+          image={previewImage}
+          meta={pill}
+        />
+      );
+    }
+    if (theme === "primevideo") {
+      return (
+        <PrimeVideoCard
+          title={title}
+          tagline={excerpt}
+          image={previewImage}
+          meta={pill}
+          rating={cRating}
+        />
+      );
+    }
+    if (theme === "hotstar") {
+      return (
+        <HotstarCard
+          title={title}
+          tagline={excerpt}
+          image={previewImage}
+          meta={pill}
+          age={dateLabel}
+        />
+      );
+    }
+    if (theme === "kukufm") {
+      return (
+        <KukuFmCard
+          title={title}
+          host={authorName}
+          show={excerpt}
+          durationSec={ytDuration}
+        />
+      );
+    }
+    if (theme === "applepodcasts") {
+      return (
+        <ApplePodcastsCard
+          title={title}
+          show={authorName}
+          cover={previewImage}
+          durationSec={ytDuration}
+        />
+      );
+    }
+    if (theme === "pocketfm") {
+      return (
+        <PocketFmCard
+          title={title}
+          host={authorName}
+          show={excerpt}
+          image={previewImage}
+          durationSec={ytDuration}
+        />
+      );
+    }
+    if (theme === "kindle") {
+      return (
+        <KindleCard
+          title={title}
+          authorName={authorName}
+          pages={bkPages}
+          rating={cRating}
+          reviews={cReviews}
+          image={previewImage}
+        />
+      );
+    }
+    if (theme === "wattpad") {
+      return (
+        <WattpadCard
+          title={title}
+          authorName={authorName}
+          rating={cRating}
+          reviews={cReviews}
+          image={previewImage}
+        />
+      );
+    }
+    if (theme === "pratilipi") {
+      return (
+        <PratilipiCard
+          title={title}
+          authorName={authorName}
+          excerpt={excerpt}
+          image={previewImage}
+        />
+      );
+    }
+    if (theme === "webtoon") {
+      return (
+        <WebtoonCard
+          title={title}
+          authorName={authorName}
+          rating={cRating}
+          reviews={cReviews}
+          image={previewImage}
+        />
+      );
+    }
+    if (theme === "medium") {
+      return (
+        <MediumCard
+          title={title}
+          authorName={authorName}
+          minutes={minutes}
+          excerpt={excerpt}
+          dateLabel={dateLabel}
+          image={previewImage}
+          hideReadTime={hideReadTime}
         />
       );
     }
@@ -980,6 +1192,7 @@ const LinkCardView = forwardRef<View, LinkCardViewProps>(function LinkCardView(
         minutes={minutes}
         image={previewImage}
         favicon={favicon ?? preview?.favicon ?? null}
+        hideReadTime={hideReadTime}
       />
     );
   };
@@ -2143,6 +2356,766 @@ function LaunchCard({
   );
 }
 
+/* ---------------- Template T1: YouTube Music card ---------------- */
+
+function YtMusicCard({
+  title,
+  artist,
+  cover,
+  kind,
+}: {
+  title: string;
+  artist: string;
+  cover: string | null;
+  kind: string | null;
+}) {
+  return (
+    <View style={styles.yi}>
+      <View style={styles.yiHeader}>
+        <View style={styles.yiDot} />
+        <Text style={styles.yiBrand} numberOfLines={1}>
+          YouTube Music
+        </Text>
+        {kind ? <Text style={styles.yiKind}>{kind}</Text> : null}
+      </View>
+      <View style={styles.yiRow}>
+        {cover ? (
+          <CardMedia uri={cover} style={styles.yiCover} />
+        ) : (
+          <View style={[styles.yiCover, styles.yiCoverFallback]}>
+            <AudioLines size={22} color="#FF0033" strokeWidth={2} />
+          </View>
+        )}
+        <View style={styles.yiCol}>
+          <Text style={styles.yiTitle} numberOfLines={2}>
+            {title}
+          </Text>
+          <Text style={styles.yiArtist} numberOfLines={1}>
+            {artist}
+          </Text>
+        </View>
+      </View>
+      <View style={styles.yiPlayRow}>
+        <View style={styles.yiPlay}>
+          <Play size={13} color="#FFFFFF" fill="#FFFFFF" strokeWidth={2.4} />
+        </View>
+        <Text style={styles.yiPlayText}>Play on YouTube Music</Text>
+      </View>
+    </View>
+  );
+}
+
+/* ---------------- Template T2: JioSaavn card ---------------- */
+
+function JioSaavnCard({
+  title,
+  artist,
+  cover,
+  kind,
+  durationSec,
+}: {
+  title: string;
+  artist: string;
+  cover: string | null;
+  kind: string | null;
+  durationSec: number | null;
+}) {
+  const durationLabel =
+    durationSec != null && durationSec > 0 ? formatDuration(durationSec) : null;
+  return (
+    <View style={styles.js}>
+      <View style={styles.jsHeader}>
+        <View style={styles.jsDot} />
+        <Text style={styles.jsBrand} numberOfLines={1}>
+          JioSaavn
+        </Text>
+        {kind ? <Text style={styles.jsKind}>{kind}</Text> : null}
+      </View>
+      <View style={styles.jsRow}>
+        {cover ? (
+          <CardMedia uri={cover} style={styles.jsCover} />
+        ) : (
+          <View style={[styles.jsCover, styles.jsCoverFallback]}>
+            <Radio size={24} color="#FF4D00" strokeWidth={1.6} />
+          </View>
+        )}
+        <View style={styles.jsCol}>
+          <Text style={styles.jsTitle} numberOfLines={2}>
+            {title}
+          </Text>
+          <Text style={styles.jsArtist} numberOfLines={1}>
+            {artist}
+          </Text>
+          {durationLabel ? (
+            <View style={styles.jsTimeRow}>
+              <Clock size={11} color="#8E8C90" strokeWidth={2} />
+              <Text style={styles.jsTime}>{durationLabel}</Text>
+            </View>
+          ) : null}
+        </View>
+      </View>
+      <View style={styles.jsBar}>
+        <View style={styles.jsBarFill} />
+      </View>
+      <View style={styles.jsFooter}>
+        <Play size={12} color="#FF4D00" fill="#FF4D00" strokeWidth={2.4} />
+        <Text style={styles.jsFooterText}>Listen on JioSaavn</Text>
+      </View>
+    </View>
+  );
+}
+
+/* ---------------- Template T3: Gaana card ---------------- */
+
+function GaanaCard({
+  title,
+  artist,
+  cover,
+  kind,
+}: {
+  title: string;
+  artist: string;
+  cover: string | null;
+  kind: string | null;
+}) {
+  return (
+    <View style={styles.gn}>
+      <View style={styles.gnHeader}>
+        <View style={styles.gnDot} />
+        <Text style={styles.gnBrand} numberOfLines={1}>
+          Gaana
+        </Text>
+        {kind ? <Text style={styles.gnKind}>{kind}</Text> : null}
+      </View>
+      <View style={styles.gnRow}>
+        {cover ? (
+          <CardMedia uri={cover} style={styles.gnCover} />
+        ) : (
+          <View style={[styles.gnCover, styles.gnCoverFallback]}>
+            <Disc size={24} color="#22D37A" strokeWidth={1.5} />
+          </View>
+        )}
+        <View style={styles.gnCol}>
+          <Text style={styles.gnTitle} numberOfLines={2}>
+            {title}
+          </Text>
+          <Text style={styles.gnArtist} numberOfLines={1}>
+            {artist}
+          </Text>
+        </View>
+      </View>
+      <View style={styles.gnFooter}>
+        <AudioWaveform size={16} color="#22D37A" strokeWidth={2} />
+        <Text style={styles.gnFooterText}>Streaming on Gaana</Text>
+      </View>
+    </View>
+  );
+}
+
+/* ---------------- Template T4: Apple Music card ---------------- */
+
+function AppleMusicCard({
+  title,
+  artist,
+  cover,
+  kind,
+}: {
+  title: string;
+  artist: string;
+  cover: string | null;
+  kind: string | null;
+}) {
+  return (
+    <View style={styles.am}>
+      <View style={styles.amHeader}>
+        <Music size={14} color="#FA233B" fill="#FA233B" strokeWidth={2} />
+        <Text style={styles.amBrand} numberOfLines={1}>
+          APPLE MUSIC
+        </Text>
+        {kind ? <Text style={styles.amKind}>{kind}</Text> : null}
+      </View>
+      {cover ? (
+        <CardMedia uri={cover} style={styles.amArt} />
+      ) : (
+        <View style={[styles.amArt, styles.amArtFallback]}>
+          <Music size={38} color="#FA233B" strokeWidth={1.4} />
+        </View>
+      )}
+      <Text style={styles.amTitle} numberOfLines={2}>
+        {title}
+      </Text>
+      <Text style={styles.amArtist} numberOfLines={1}>
+        {artist}
+      </Text>
+      <View style={styles.amFooter}>
+        <View style={styles.amFooterDot} />
+        <Text style={styles.amFooterText}>Apple Music</Text>
+      </View>
+    </View>
+  );
+}
+
+/* ---------------- Template T5: Netflix card ---------------- */
+
+function NetflixCard({
+  title,
+  tagline,
+  image,
+  meta,
+}: {
+  title: string;
+  tagline: string;
+  image: string | null;
+  meta: string;
+}) {
+  return (
+    <View style={styles.nf}>
+      <Text style={styles.nfWordmark}>NETFLIX</Text>
+      {image ? (
+        <View style={styles.nfHero}>
+          <Image source={{ uri: image }} style={styles.nfHeroFill} resizeMode="cover" />
+        </View>
+      ) : (
+        <View style={[styles.nfHero, styles.nfHeroFallback]}>
+          <Tv size={26} color="#E50914" strokeWidth={1.6} />
+        </View>
+      )}
+      <Text style={styles.nfTitle} numberOfLines={2}>
+        {title}
+      </Text>
+      {tagline ? (
+        <Text style={styles.nfTagline} numberOfLines={2}>
+          {tagline}
+        </Text>
+      ) : null}
+      <View style={styles.nfMetaRow}>
+        <Text style={styles.nfMeta} numberOfLines={1}>
+          {meta}
+        </Text>
+        <View style={styles.nfMatch}>
+          <Text style={styles.nfMatchText}>N Series</Text>
+        </View>
+      </View>
+    </View>
+  );
+}
+
+/* ---------------- Template T6: Amazon Prime Video card ---------------- */
+
+function PrimeVideoCard({
+  title,
+  tagline,
+  image,
+  meta,
+  rating,
+}: {
+  title: string;
+  tagline: string;
+  image: string | null;
+  meta: string;
+  rating: number | null;
+}) {
+  return (
+    <View style={styles.pv}>
+      <View style={styles.pvThumbWrap}>
+        {image ? (
+          <CardMedia uri={image} style={styles.pvThumb} />
+        ) : (
+          <View style={[styles.pvThumb, styles.pvThumbFallback]}>
+            <MonitorPlay size={26} color="#00A8E1" strokeWidth={1.5} />
+          </View>
+        )}
+        <View style={styles.pvPlay}>
+          <Play size={16} color="#FFFFFF" fill="#FFFFFF" strokeWidth={2.2} />
+        </View>
+        <Text style={styles.pvUhd}>4K UHD</Text>
+      </View>
+      <Text style={styles.pvTitle} numberOfLines={2}>
+        {title}
+      </Text>
+      {tagline ? (
+        <Text style={styles.pvTagline} numberOfLines={2}>
+          {tagline}
+        </Text>
+      ) : null}
+      <View style={styles.pvMetaRow}>
+        <Text style={styles.pvMeta} numberOfLines={1}>
+          {meta}
+        </Text>
+        {rating != null ? (
+          <Text style={styles.pvRating}>{rating.toFixed(1)} ★</Text>
+        ) : null}
+      </View>
+      <Text style={styles.pvWordmark}>prime video</Text>
+    </View>
+  );
+}
+
+/* ---------------- Template T7: Disney+ Hotstar card ---------------- */
+
+function HotstarCard({
+  title,
+  tagline,
+  image,
+  meta,
+  age,
+}: {
+  title: string;
+  tagline: string;
+  image: string | null;
+  meta: string;
+  age: string;
+}) {
+  return (
+    <View style={styles.hs}>
+      <View style={styles.hsBannerWrap}>
+        {image ? (
+          <CardMedia uri={image} style={styles.hsBanner} />
+        ) : (
+          <View style={[styles.hsBanner, styles.hsBannerFallback]}>
+            <Film size={26} color="#2FC9E0" strokeWidth={1.5} />
+          </View>
+        )}
+        <View style={styles.hsAgeChip}>
+          <Text style={styles.hsAgeText}>{age ? age.slice(0, 3).toUpperCase() : "U/A"}</Text>
+        </View>
+      </View>
+      <Text style={styles.hsTitle} numberOfLines={2}>
+        {title}
+      </Text>
+      {tagline ? (
+        <Text style={styles.hsTagline} numberOfLines={2}>
+          {tagline}
+        </Text>
+      ) : null}
+      <View style={styles.hsFooter}>
+        <View style={styles.hsDot} />
+        <Text style={styles.hsBrand} numberOfLines={1}>
+          Hotstar
+        </Text>
+        <Text style={styles.hsMeta} numberOfLines={1}>
+          {meta}
+        </Text>
+      </View>
+    </View>
+  );
+}
+
+/* ---------------- Template T8: Kuku FM card ---------------- */
+
+function KukuFmCard({
+  title,
+  host,
+  show,
+  durationSec,
+}: {
+  title: string;
+  host: string;
+  show: string;
+  durationSec: number | null;
+}) {
+  const durationLabel =
+    durationSec != null && durationSec > 0 ? formatDuration(durationSec) : null;
+  return (
+    <View style={styles.kf}>
+      <View style={styles.kfHeader}>
+        <View style={styles.kfDot} />
+        <Text style={styles.kfBrand} numberOfLines={1}>
+          Kuku FM
+        </Text>
+        <Text style={styles.kfEpisode}>EPISODE</Text>
+      </View>
+      <Text style={styles.kfTitle} numberOfLines={2}>
+        {title}
+      </Text>
+      <Text style={styles.kfHost} numberOfLines={1}>
+        {host}
+      </Text>
+      {show ? (
+        <Text style={styles.kfShow} numberOfLines={2}>
+          {show}
+        </Text>
+      ) : null}
+      <View style={styles.kfWaveRow}>
+        <AudioWaveform size={18} color="#FF8A2B" strokeWidth={2} />
+        {durationLabel ? <Text style={styles.kfDuration}>{durationLabel}</Text> : null}
+        <View style={styles.kfPlay}>
+          <Play size={12} color="#FFFFFF" fill="#FFFFFF" strokeWidth={2.4} />
+        </View>
+      </View>
+    </View>
+  );
+}
+
+/* ---------------- Template T9: Apple Podcasts card ---------------- */
+
+function ApplePodcastsCard({
+  title,
+  show,
+  cover,
+  durationSec,
+}: {
+  title: string;
+  show: string;
+  cover: string | null;
+  durationSec: number | null;
+}) {
+  const durationLabel =
+    durationSec != null && durationSec > 0 ? formatDuration(durationSec) : null;
+  return (
+    <View style={styles.pod}>
+      <View style={styles.podHeader}>
+        <View style={styles.podDot} />
+        <Text style={styles.podBrand} numberOfLines={1}>
+          APPLE PODCASTS
+        </Text>
+      </View>
+      <View style={styles.podRow}>
+        {cover ? (
+          <CardMedia uri={cover} style={styles.podCover} />
+        ) : (
+          <View style={[styles.podCover, styles.podCoverFallback]}>
+            <Headphones size={22} color="#8B3DFF" strokeWidth={1.8} />
+          </View>
+        )}
+        <View style={styles.podCol}>
+          <Text style={styles.podEpisode}>EPISODE</Text>
+          <Text style={styles.podTitle} numberOfLines={2}>
+            {title}
+          </Text>
+          <Text style={styles.podShow} numberOfLines={1}>
+            {show}
+          </Text>
+        </View>
+      </View>
+      <View style={styles.podFooter}>
+        {durationLabel ? <Text style={styles.podDuration}>{durationLabel}</Text> : null}
+        <View style={styles.podPlay}>
+          <Play size={12} color="#8B3DFF" fill="#8B3DFF" strokeWidth={2.4} />
+        </View>
+      </View>
+    </View>
+  );
+}
+
+/* ---------------- Template T10: Pocket FM card ---------------- */
+
+function PocketFmCard({
+  title,
+  host,
+  show,
+  image,
+  durationSec,
+}: {
+  title: string;
+  host: string;
+  show: string;
+  image: string | null;
+  durationSec: number | null;
+}) {
+  const durationLabel =
+    durationSec != null && durationSec > 0 ? formatDuration(durationSec) : null;
+  return (
+    <View style={styles.pf}>
+      {image ? (
+        <CardMedia uri={image} style={styles.pfBanner} />
+      ) : (
+        <View style={[styles.pfBanner, styles.pfBannerFallback]}>
+          <Headphones size={26} color="#00C48C" strokeWidth={1.6} />
+        </View>
+      )}
+      <View style={styles.pfChip}>
+        <Text style={styles.pfChipText}>AUDIO SERIES</Text>
+      </View>
+      <Text style={styles.pfTitle} numberOfLines={2}>
+        {title}
+      </Text>
+      <View style={styles.pfMetaRow}>
+        <Text style={styles.pfHost} numberOfLines={1}>
+          {host}
+        </Text>
+        {show ? (
+          <Text style={styles.pfShow} numberOfLines={1}>
+            {show}
+          </Text>
+        ) : null}
+      </View>
+      <View style={styles.pfWaveRow}>
+        <AudioWaveform size={18} color="#00C48C" strokeWidth={2} />
+        {durationLabel ? <Text style={styles.pfDuration}>{durationLabel}</Text> : null}
+        <View style={styles.pfPlay}>
+          <Play size={12} color="#FFFFFF" fill="#FFFFFF" strokeWidth={2.4} />
+        </View>
+      </View>
+      <Text style={styles.pfBrand}>Pocket FM</Text>
+    </View>
+  );
+}
+
+/* ---------------- Template T11: Kindle card ---------------- */
+
+function KindleCard({
+  title,
+  authorName,
+  pages,
+  rating,
+  reviews,
+  image,
+}: {
+  title: string;
+  authorName: string;
+  pages: number | null;
+  rating: number | null;
+  reviews: number | null;
+  image: string | null;
+}) {
+  return (
+    <View style={styles.kd}>
+      <View style={styles.kdProviderRow}>
+        <View style={styles.kdDot} />
+        <Text style={styles.kdProvider}>Kindle Store</Text>
+      </View>
+      <View style={styles.kdRow}>
+        {image ? (
+          <CardMedia uri={image} style={styles.kdCover} />
+        ) : (
+          <View style={[styles.kdCover, styles.kdCoverFallback]}>
+            <BookMarked size={24} color="#FF9900" strokeWidth={1.6} />
+          </View>
+        )}
+        <View style={styles.kdCol}>
+          <Text style={styles.kdTitle} numberOfLines={3}>
+            {title}
+          </Text>
+          <Text style={styles.kdAuthor} numberOfLines={1}>
+            {authorName}
+          </Text>
+          {pages != null ? <Text style={styles.kdPages}>{pages} pages</Text> : null}
+        </View>
+      </View>
+      {rating != null || reviews != null ? (
+        <View style={styles.kdMetaRow}>
+          <Star size={12} color="#B45309" fill="#B45309" strokeWidth={1} />
+          <Text style={styles.kdRatingText}>
+            {rating != null ? rating.toFixed(1) : "—"}
+            {reviews != null ? ` (${formatCompact(reviews)})` : ""}
+          </Text>
+          <Text style={styles.kdKindle}>amazon kindle</Text>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+/* ---------------- Template T12: Wattpad card ---------------- */
+
+function WattpadCard({
+  title,
+  authorName,
+  rating,
+  reviews,
+  image,
+}: {
+  title: string;
+  authorName: string;
+  rating: number | null;
+  reviews: number | null;
+  image: string | null;
+}) {
+  return (
+    <View style={styles.wt}>
+      <View style={styles.wtProviderRow}>
+        <View style={styles.wtDot} />
+        <Text style={styles.wtProvider}>Wattpad</Text>
+      </View>
+      <View style={styles.wtRow}>
+        {image ? (
+          <CardMedia uri={image} style={styles.wtCover} />
+        ) : (
+          <View style={[styles.wtCover, styles.wtCoverFallback]}>
+            <Scroll size={24} color="#00B96B" strokeWidth={1.6} />
+          </View>
+        )}
+        <View style={styles.wtCol}>
+          <Text style={styles.wtTitle} numberOfLines={3}>
+            {title}
+          </Text>
+          <Text style={styles.wtAuthor} numberOfLines={1}>
+            {authorName}
+          </Text>
+          {rating != null || reviews != null ? (
+            <View style={styles.wtRatingRow}>
+              <Star size={11} color="#00B96B" fill="#00B96B" strokeWidth={1} />
+              <Text style={styles.wtRatingText}>
+                {rating != null ? rating.toFixed(1) : "—"}
+                {reviews != null ? ` · ${formatCompact(reviews)} reads` : ""}
+              </Text>
+            </View>
+          ) : null}
+        </View>
+      </View>
+      <View style={styles.wtReadRow}>
+        <BookOpen size={13} color="#FFFFFF" strokeWidth={2.2} />
+        <Text style={styles.wtReadText}>Read now</Text>
+      </View>
+    </View>
+  );
+}
+
+/* ---------------- Template T13: Pratilipi card ---------------- */
+
+function PratilipiCard({
+  title,
+  authorName,
+  excerpt,
+  image,
+}: {
+  title: string;
+  authorName: string;
+  excerpt: string;
+  image: string | null;
+}) {
+  return (
+    <View style={styles.pr}>
+      <View style={styles.prProviderRow}>
+        <View style={styles.prDot} />
+        <Text style={styles.prProvider}>Pratilipi</Text>
+      </View>
+      <Text style={styles.prTitle} numberOfLines={2}>
+        {title}
+      </Text>
+      <Text style={styles.prAuthor} numberOfLines={1}>
+        {authorName}
+      </Text>
+      {excerpt ? (
+        <Text style={styles.prExcerpt} numberOfLines={2}>
+          {excerpt}
+        </Text>
+      ) : null}
+      <View style={styles.prBottomRow}>
+        {image ? (
+          <CardMedia uri={image} style={styles.prCover} />
+        ) : (
+          <View style={[styles.prCover, styles.prCoverFallback]}>
+            <BookOpen size={22} color="#FF6B2C" strokeWidth={1.6} />
+          </View>
+        )}
+        <View style={styles.prChip}>
+          <Text style={styles.prChipText}>Continue Reading</Text>
+        </View>
+      </View>
+    </View>
+  );
+}
+
+/* ---------------- Template T14: Webtoon card ---------------- */
+
+function WebtoonCard({
+  title,
+  authorName,
+  rating,
+  reviews,
+  image,
+}: {
+  title: string;
+  authorName: string;
+  rating: number | null;
+  reviews: number | null;
+  image: string | null;
+}) {
+  return (
+    <View style={styles.wb}>
+      <Text style={styles.wbWordmark}>WEBTOON</Text>
+      <View style={styles.wbRow}>
+        {image ? (
+          <CardMedia uri={image} style={styles.wbCover} />
+        ) : (
+          <View style={[styles.wbCover, styles.wbCoverFallback]}>
+            <Sparkles size={22} color="#00DC64" strokeWidth={1.8} />
+          </View>
+        )}
+        <View style={styles.wbCol}>
+          <Text style={styles.wbTitle} numberOfLines={3}>
+            {title}
+          </Text>
+          <Text style={styles.wbAuthor} numberOfLines={1}>
+            {authorName}
+          </Text>
+          {rating != null || reviews != null ? (
+            <View style={styles.wbLikesRow}>
+              <Heart size={11} color="#00DC64" fill="#00DC64" strokeWidth={1.5} />
+              <Text style={styles.wbLikesText}>
+                {rating != null ? `${rating.toFixed(1)} ★` : ""}
+                {reviews != null ? ` · ${formatCompact(reviews)}` : ""}
+              </Text>
+            </View>
+          ) : null}
+        </View>
+      </View>
+      <View style={styles.wbReadRow}>
+        <Play size={12} color="#FFFFFF" fill="#FFFFFF" strokeWidth={2.4} />
+        <Text style={styles.wbReadText}>Read series</Text>
+      </View>
+    </View>
+  );
+}
+
+/* ---------------- Template T15: Medium article card ---------------- */
+
+function MediumCard({
+  title,
+  authorName,
+  minutes,
+  excerpt,
+  dateLabel,
+  image,
+  hideReadTime,
+}: {
+  title: string;
+  authorName: string;
+  minutes: number;
+  excerpt: string;
+  dateLabel: string;
+  image: string | null;
+  hideReadTime?: boolean;
+}) {
+  return (
+    <View style={styles.md}>
+      <View style={styles.mdProviderRow}>
+        <View style={styles.mdDot} />
+        <Text style={styles.mdProvider}>Medium</Text>
+      </View>
+      {image ? (
+        <View style={styles.mdHeroWrap}>
+          <CardMedia uri={image} style={styles.mdHero} />
+        </View>
+      ) : null}
+      <Text style={styles.mdTitle} numberOfLines={3}>
+        {title}
+      </Text>
+      <Text style={styles.mdAuthor} numberOfLines={1}>
+        {authorName}
+      </Text>
+      {excerpt ? (
+        <Text style={styles.mdExcerpt} numberOfLines={2}>
+          {excerpt}
+        </Text>
+      ) : null}
+      <View style={styles.mdFooterRow}>
+        <Text style={styles.mdFooterText} numberOfLines={1}>
+          {hideReadTime
+            ? dateLabel
+            : `${dateLabel ? `${dateLabel} · ` : ""}${minutes} min read`}
+        </Text>
+        <View style={styles.mdClapRow}>
+          <View style={styles.mdClapMark} />
+          <Text style={styles.mdClapText}>Follow</Text>
+        </View>
+      </View>
+    </View>
+  );
+}
+
 /* ---------------- Template D: YouTube video/shorts/live/premiere ---------------- */
 
 function YouTubeCard({
@@ -2399,6 +3372,7 @@ function DynamicCard({
   minutes,
   image,
   favicon,
+  hideReadTime,
 }: {
   isStory: boolean;
   cardWidth: number;
@@ -2408,6 +3382,7 @@ function DynamicCard({
   minutes: number;
   image: string | null;
   favicon: string | null;
+  hideReadTime?: boolean;
 }) {
   const colors = useCardColors();
   const size = useImageSize(image);
@@ -2425,9 +3400,11 @@ function DynamicCard({
       <Text style={[styles.edAuthor, { color: colors.secondary }]} numberOfLines={1}>
         {publisher}
       </Text>
-      <Text style={[styles.edReadTime, { color: colors.muted }]} numberOfLines={1}>
-        {`${minutes} min read`}
-      </Text>
+      {hideReadTime ? null : (
+        <Text style={[styles.edReadTime, { color: colors.muted }]} numberOfLines={1}>
+          {`${minutes} min read`}
+        </Text>
+      )}
     </View>
   );
 
@@ -2488,6 +3465,7 @@ function SpotlightCard({
   dateLabel,
   pill,
   image,
+  hideReadTime,
 }: {
   isStory: boolean;
   title: string;
@@ -2497,6 +3475,7 @@ function SpotlightCard({
   dateLabel: string;
   pill: string;
   image: string | null;
+  hideReadTime?: boolean;
 }) {
   const colors = useCardColors();
   return (
@@ -2511,7 +3490,7 @@ function SpotlightCard({
           </View>
         ) : null}
         <Text style={[styles.spotMetaText, { color: colors.muted }]} numberOfLines={1}>
-          {dateLabel} • {`${minutes} min read`}
+          {hideReadTime ? dateLabel : `${dateLabel} • ${minutes} min read`}
         </Text>
       </View>
       <Text style={[styles.spotTitle, { color: colors.primary }]} numberOfLines={isStory ? 3 : 2}>
@@ -4267,6 +5246,1212 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "800",
     color: "#FFFFFF",
+  },
+
+  /* ytmusic embed */
+  yi: {
+    backgroundColor: "#0F0F0F",
+    padding: 16,
+  },
+  yiHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginBottom: 12,
+  },
+  yiDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: "#FF0033",
+  },
+  yiBrand: {
+    flex: 1,
+    fontSize: 12,
+    fontWeight: "800",
+    letterSpacing: 0.4,
+    color: "#AAAAAA",
+  },
+  yiKind: {
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: 1,
+    color: "#FF0033",
+  },
+  yiRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  yiCover: {
+    width: 72,
+    height: 72,
+    borderRadius: 14,
+    backgroundColor: "#1F1F1F",
+  },
+  yiCoverFallback: {
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  yiCol: {
+    flex: 1,
+  },
+  yiTitle: {
+    fontSize: 16,
+    lineHeight: 22,
+    fontWeight: "800",
+    color: "#FFFFFF",
+  },
+  yiArtist: {
+    fontSize: 13,
+    color: "#9CA3AF",
+    marginTop: 3,
+    fontWeight: "500",
+  },
+  yiPlayRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 14,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: "#1F1F1F",
+  },
+  yiPlay: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: "#FF0033",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  yiPlayText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#E5E7EB",
+  },
+
+  /* jiosaavn embed */
+  js: {
+    backgroundColor: "#111012",
+    padding: 16,
+  },
+  jsHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginBottom: 12,
+  },
+  jsDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: "#FF4D00",
+  },
+  jsBrand: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: "800",
+    letterSpacing: 0.2,
+    color: "#E7E5E4",
+  },
+  jsKind: {
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: 1,
+    color: "#FF4D00",
+  },
+  jsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 13,
+  },
+  jsCover: {
+    width: 84,
+    height: 84,
+    borderRadius: 14,
+    backgroundColor: "#241E1C",
+  },
+  jsCoverFallback: {
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  jsCol: {
+    flex: 1,
+  },
+  jsTitle: {
+    fontSize: 18,
+    lineHeight: 24,
+    fontWeight: "800",
+    color: "#FFFFFF",
+    letterSpacing: -0.3,
+  },
+  jsArtist: {
+    fontSize: 13,
+    color: "#A8A29E",
+    marginTop: 3,
+    fontWeight: "600",
+  },
+  jsTimeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    marginTop: 8,
+  },
+  jsTime: {
+    fontSize: 11,
+    color: "#8E8C90",
+    fontWeight: "600",
+  },
+  jsBar: {
+    height: 3,
+    borderRadius: 2,
+    backgroundColor: "#2B2623",
+    marginTop: 14,
+    overflow: "hidden",
+  },
+  jsBarFill: {
+    width: "42%",
+    height: "100%",
+    borderRadius: 2,
+    backgroundColor: "#FF4D00",
+  },
+  jsFooter: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
+    marginTop: 8,
+  },
+  jsFooterText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#E7E5E4",
+  },
+
+  /* gaana embed */
+  gn: {
+    backgroundColor: "#0C1410",
+    padding: 16,
+  },
+  gnHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginBottom: 12,
+  },
+  gnDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: "#22D37A",
+  },
+  gnBrand: {
+    flex: 1,
+    fontSize: 12,
+    fontWeight: "800",
+    letterSpacing: 0.4,
+    color: "#B7C9C0",
+  },
+  gnKind: {
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: 1,
+    color: "#22D37A",
+  },
+  gnRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  gnCover: {
+    width: 76,
+    height: 76,
+    borderRadius: 38,
+    backgroundColor: "#14241C",
+  },
+  gnCoverFallback: {
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  gnCol: {
+    flex: 1,
+  },
+  gnTitle: {
+    fontSize: 16,
+    lineHeight: 22,
+    fontWeight: "800",
+    color: "#FFFFFF",
+  },
+  gnArtist: {
+    fontSize: 13,
+    color: "#93A79C",
+    marginTop: 3,
+    fontWeight: "500",
+  },
+  gnFooter: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
+    marginTop: 12,
+  },
+  gnFooterText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#D1E8DB",
+  },
+
+  /* applemusic embed */
+  am: {
+    backgroundColor: "#FAFAFA",
+    padding: 16,
+  },
+  amHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginBottom: 12,
+  },
+  amBrand: {
+    flex: 1,
+    fontSize: 12,
+    fontWeight: "800",
+    letterSpacing: 0.6,
+    color: "#9B9B9B",
+  },
+  amKind: {
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: 1,
+    color: "#FA233B",
+  },
+  amArt: {
+    width: "100%",
+    aspectRatio: 1.7,
+    borderRadius: 18,
+    backgroundColor: "#EFEFEF",
+    marginBottom: 12,
+  },
+  amArtFallback: {
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  amTitle: {
+    fontSize: 19,
+    lineHeight: 25,
+    fontWeight: "800",
+    color: "#1D1D1F",
+    letterSpacing: -0.3,
+  },
+  amArtist: {
+    fontSize: 13,
+    color: "#86868B",
+    marginTop: 3,
+    fontWeight: "500",
+  },
+  amFooter: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
+    marginTop: 12,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: "#ECECEC",
+  },
+  amFooterDot: {
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: "#FF2D55",
+  },
+  amFooterText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#86868B",
+  },
+
+  /* netflix embed */
+  nf: {
+    backgroundColor: "#000000",
+    padding: 16,
+  },
+  nfWordmark: {
+    fontSize: 20,
+    fontWeight: "900",
+    letterSpacing: 5,
+    color: "#E50914",
+    marginBottom: 10,
+  },
+  nfHero: {
+    width: "100%",
+    height: 130,
+    borderRadius: 12,
+    overflow: "hidden",
+    backgroundColor: "#161616",
+    marginBottom: 10,
+  },
+  nfHeroFill: {
+    width: "100%",
+    height: "100%",
+  },
+  nfHeroFallback: {
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  nfTitle: {
+    fontSize: 18,
+    lineHeight: 24,
+    fontWeight: "800",
+    color: "#FFFFFF",
+    letterSpacing: -0.2,
+  },
+  nfTagline: {
+    fontSize: 13,
+    color: "#A3A3A3",
+    lineHeight: 18,
+    marginTop: 4,
+    fontWeight: "500",
+  },
+  nfMetaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginTop: 10,
+  },
+  nfMeta: {
+    flex: 1,
+    fontSize: 12,
+    color: "#737373",
+    fontWeight: "600",
+  },
+  nfMatch: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#E50914",
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  nfMatchText: {
+    fontSize: 10,
+    fontWeight: "800",
+    color: "#FFFFFF",
+    letterSpacing: 0.5,
+  },
+
+  /* primevideo embed */
+  pv: {
+    backgroundColor: "#0B1425",
+    padding: 16,
+  },
+  pvThumbWrap: {
+    width: "100%",
+    aspectRatio: 16 / 9,
+    borderRadius: 14,
+    overflow: "hidden",
+    backgroundColor: "#12203F",
+    marginBottom: 10,
+  },
+  pvThumb: {
+    width: "100%",
+    height: "100%",
+  },
+  pvThumbFallback: {
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  pvPlay: {
+    position: "absolute",
+    top: "50%",
+    left: "50%",
+    width: 40,
+    height: 40,
+    marginLeft: -20,
+    marginTop: -20,
+    borderRadius: 20,
+    backgroundColor: "rgba(0, 168, 225, 0.92)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  pvUhd: {
+    position: "absolute",
+    right: 8,
+    bottom: 8,
+    fontSize: 9,
+    fontWeight: "800",
+    color: "#7DE2FF",
+    backgroundColor: "rgba(0,0,0,0.55)",
+    borderRadius: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    overflow: "hidden",
+    letterSpacing: 0.6,
+  },
+  pvTitle: {
+    fontSize: 17,
+    lineHeight: 23,
+    fontWeight: "800",
+    color: "#FFFFFF",
+    letterSpacing: -0.2,
+  },
+  pvTagline: {
+    fontSize: 13,
+    color: "#9FB0C9",
+    lineHeight: 18,
+    marginTop: 4,
+    fontWeight: "500",
+  },
+  pvMetaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginTop: 8,
+  },
+  pvMeta: {
+    flex: 1,
+    fontSize: 12,
+    color: "#89A0BD",
+    fontWeight: "600",
+  },
+  pvRating: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#00A8E1",
+  },
+  pvWordmark: {
+    textAlign: "right",
+    fontSize: 13,
+    fontWeight: "900",
+    color: "#00A8E1",
+    marginTop: 10,
+    letterSpacing: 0.4,
+    textTransform: "lowercase",
+  },
+
+  /* hotstar embed */
+  hs: {
+    backgroundColor: "#0F0E2A",
+    padding: 16,
+  },
+  hsBannerWrap: {
+    width: "100%",
+    aspectRatio: 2.1,
+    borderRadius: 14,
+    overflow: "hidden",
+    backgroundColor: "#1C1B45",
+    marginBottom: 12,
+  },
+  hsBanner: {
+    width: "100%",
+    height: "100%",
+  },
+  hsBannerFallback: {
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  hsAgeChip: {
+    position: "absolute",
+    right: 8,
+    top: 8,
+    backgroundColor: "rgba(0,0,0,0.6)",
+    borderRadius: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  hsAgeText: {
+    fontSize: 10,
+    fontWeight: "800",
+    color: "#FFFFFF",
+    letterSpacing: 0.5,
+  },
+  hsTitle: {
+    fontSize: 19,
+    lineHeight: 25,
+    fontWeight: "800",
+    color: "#FFFFFF",
+    letterSpacing: -0.3,
+  },
+  hsTagline: {
+    fontSize: 13,
+    color: "#B9B9CF",
+    lineHeight: 18,
+    marginTop: 4,
+    fontWeight: "500",
+  },
+  hsFooter: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
+    marginTop: 12,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: "#262554",
+  },
+  hsDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: "#2FC9E0",
+  },
+  hsBrand: {
+    fontSize: 12,
+    fontWeight: "800",
+    color: "#E6E6F2",
+  },
+  hsMeta: {
+    flex: 1,
+    fontSize: 12,
+    color: "#8E8EAA",
+    fontWeight: "600",
+    textAlign: "right",
+  },
+
+  /* kukufm embed */
+  kf: {
+    backgroundColor: "#1A1613",
+    padding: 16,
+  },
+  kfHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginBottom: 10,
+  },
+  kfDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: "#FF8A2B",
+  },
+  kfBrand: {
+    flex: 1,
+    fontSize: 12,
+    fontWeight: "800",
+    letterSpacing: 0.4,
+    color: "#C9BFB2",
+  },
+  kfEpisode: {
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: 1.5,
+    color: "#FF8A2B",
+  },
+  kfTitle: {
+    fontSize: 18,
+    lineHeight: 24,
+    fontWeight: "800",
+    color: "#FFFFFF",
+    letterSpacing: -0.3,
+  },
+  kfHost: {
+    fontSize: 13,
+    color: "#B0A79E",
+    marginTop: 3,
+    fontWeight: "600",
+  },
+  kfShow: {
+    fontSize: 13,
+    color: "#8F877F",
+    lineHeight: 18,
+    marginTop: 8,
+    fontWeight: "500",
+  },
+  kfWaveRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: "#2A241F",
+  },
+  kfDuration: {
+    flex: 1,
+    fontSize: 12,
+    color: "#B0A79E",
+    fontWeight: "700",
+  },
+  kfPlay: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: "#FF8A2B",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  /* applepodcasts embed */
+  pod: {
+    backgroundColor: "#14141B",
+    padding: 16,
+  },
+  podHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginBottom: 12,
+  },
+  podDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: "#8B3DFF",
+  },
+  podBrand: {
+    flex: 1,
+    fontSize: 11,
+    fontWeight: "800",
+    letterSpacing: 0.8,
+    color: "#8E8E9E",
+  },
+  podRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  podCover: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: "#1F1F2E",
+  },
+  podCoverFallback: {
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  podCol: {
+    flex: 1,
+  },
+  podEpisode: {
+    fontSize: 9,
+    fontWeight: "800",
+    letterSpacing: 1.5,
+    color: "#8B3DFF",
+    marginBottom: 2,
+  },
+  podTitle: {
+    fontSize: 16,
+    lineHeight: 22,
+    fontWeight: "800",
+    color: "#FFFFFF",
+  },
+  podShow: {
+    fontSize: 13,
+    color: "#8E8E9E",
+    marginTop: 3,
+    fontWeight: "500",
+  },
+  podFooter: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 12,
+  },
+  podDuration: {
+    flex: 1,
+    fontSize: 12,
+    color: "#8E8E9E",
+    fontWeight: "700",
+  },
+  podPlay: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    borderWidth: 1.5,
+    borderColor: "#8B3DFF",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  /* pocketfm embed */
+  pf: {
+    backgroundColor: "#08110E",
+    padding: 16,
+  },
+  pfBanner: {
+    width: "100%",
+    aspectRatio: 2.2,
+    borderRadius: 14,
+    overflow: "hidden",
+    backgroundColor: "#0E1E19",
+  },
+  pfBannerFallback: {
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  pfChip: {
+    alignSelf: "flex-start",
+    backgroundColor: "rgba(0, 196, 140, 0.16)",
+    borderWidth: 1,
+    borderColor: "rgba(0, 196, 140, 0.5)",
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    marginTop: 12,
+  },
+  pfChipText: {
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: 1.2,
+    color: "#4DD6A8",
+  },
+  pfTitle: {
+    fontSize: 19,
+    lineHeight: 25,
+    fontWeight: "800",
+    color: "#FFFFFF",
+    letterSpacing: -0.3,
+    marginTop: 8,
+  },
+  pfMetaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 3,
+  },
+  pfHost: {
+    fontSize: 13,
+    color: "#9FB9AF",
+    fontWeight: "600",
+    flexShrink: 1,
+  },
+  pfShow: {
+    flex: 1,
+    fontSize: 12,
+    color: "#5E7A70",
+    fontWeight: "500",
+    textAlign: "right",
+  },
+  pfWaveRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 10,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: "#132B24",
+  },
+  pfDuration: {
+    flex: 1,
+    fontSize: 12,
+    color: "#9FB9AF",
+    fontWeight: "700",
+  },
+  pfPlay: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: "#00C48C",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  pfBrand: {
+    textAlign: "right",
+    fontSize: 12,
+    fontWeight: "800",
+    color: "#4DD6A8",
+    marginTop: 8,
+    letterSpacing: 0.6,
+  },
+
+  /* kindle embed */
+  kd: {
+    backgroundColor: "#F2EFE9",
+    padding: 16,
+  },
+  kdProviderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginBottom: 12,
+  },
+  kdDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: "#FF9900",
+  },
+  kdProvider: {
+    fontSize: 12,
+    fontWeight: "800",
+    letterSpacing: 0.4,
+    color: "#8B7E6B",
+  },
+  kdRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+  },
+  kdCover: {
+    width: 64,
+    height: 92,
+    borderRadius: 6,
+    backgroundColor: "#E5DFD3",
+  },
+  kdCoverFallback: {
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  kdCol: {
+    flex: 1,
+  },
+  kdTitle: {
+    fontSize: 17,
+    lineHeight: 23,
+    fontWeight: "800",
+    color: "#1F1F1F",
+    letterSpacing: -0.2,
+  },
+  kdAuthor: {
+    fontSize: 13,
+    color: "#6E6455",
+    marginTop: 3,
+    fontWeight: "600",
+  },
+  kdPages: {
+    fontSize: 12,
+    color: "#8E8371",
+    marginTop: 4,
+    fontWeight: "500",
+  },
+  kdMetaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginTop: 12,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: "#E2DBCE",
+  },
+  kdRatingText: {
+    flex: 1,
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#6E6455",
+  },
+  kdKindle: {
+    fontSize: 11,
+    fontWeight: "800",
+    color: "#B45309",
+    letterSpacing: 0.4,
+  },
+
+  /* wattpad embed */
+  wt: {
+    backgroundColor: "#FFFFFC",
+    padding: 16,
+  },
+  wtProviderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginBottom: 12,
+  },
+  wtDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: "#00B96B",
+  },
+  wtProvider: {
+    fontSize: 12,
+    fontWeight: "800",
+    letterSpacing: 0.4,
+    color: "#8A8A86",
+  },
+  wtRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+  },
+  wtCover: {
+    width: 64,
+    height: 92,
+    borderRadius: 10,
+    backgroundColor: "#EFF7F2",
+  },
+  wtCoverFallback: {
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  wtCol: {
+    flex: 1,
+  },
+  wtTitle: {
+    fontSize: 17,
+    lineHeight: 23,
+    fontWeight: "800",
+    color: "#1E1E1E",
+    letterSpacing: -0.2,
+  },
+  wtAuthor: {
+    fontSize: 13,
+    color: "#71716D",
+    marginTop: 3,
+    fontWeight: "600",
+  },
+  wtRatingRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    marginTop: 6,
+  },
+  wtRatingText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#5D8A74",
+  },
+  wtReadRow: {
+    alignSelf: "flex-start",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "#00B96B",
+    borderRadius: 999,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    marginTop: 12,
+  },
+  wtReadText: {
+    fontSize: 12,
+    fontWeight: "800",
+    color: "#FFFFFF",
+  },
+
+  /* pratilipi embed */
+  pr: {
+    backgroundColor: "#FFF7ED",
+    padding: 16,
+  },
+  prProviderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginBottom: 10,
+  },
+  prDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: "#FF6B2C",
+  },
+  prProvider: {
+    fontSize: 12,
+    fontWeight: "800",
+    letterSpacing: 0.4,
+    color: "#B3805F",
+  },
+  prTitle: {
+    fontSize: 19,
+    lineHeight: 25,
+    fontWeight: "800",
+    color: "#2E1F16",
+    letterSpacing: -0.3,
+  },
+  prAuthor: {
+    fontSize: 13,
+    color: "#8A6A52",
+    marginTop: 3,
+    fontWeight: "700",
+  },
+  prExcerpt: {
+    fontSize: 13,
+    color: "#7C6C5F",
+    lineHeight: 19,
+    marginTop: 8,
+    fontWeight: "500",
+  },
+  prBottomRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    marginTop: 12,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: "#F1DFCE",
+  },
+  prCover: {
+    width: 46,
+    height: 46,
+    borderRadius: 10,
+    backgroundColor: "#F5E2CE",
+  },
+  prCoverFallback: {
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  prChip: {
+    flex: 1,
+    backgroundColor: "#FF6B2C",
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    alignItems: "center",
+  },
+  prChipText: {
+    fontSize: 12,
+    fontWeight: "800",
+    color: "#FFFFFF",
+  },
+
+  /* webtoon embed */
+  wb: {
+    backgroundColor: "#FFFFFF",
+    padding: 16,
+  },
+  wbWordmark: {
+    fontSize: 14,
+    fontWeight: "900",
+    letterSpacing: 2,
+    color: "#00DC64",
+    marginBottom: 10,
+  },
+  wbRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+  },
+  wbCover: {
+    width: 64,
+    height: 100,
+    borderRadius: 10,
+    backgroundColor: "#EFFAF3",
+  },
+  wbCoverFallback: {
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  wbCol: {
+    flex: 1,
+  },
+  wbTitle: {
+    fontSize: 16,
+    lineHeight: 22,
+    fontWeight: "800",
+    color: "#18181B",
+    letterSpacing: -0.2,
+  },
+  wbAuthor: {
+    fontSize: 13,
+    color: "#6B6B70",
+    marginTop: 3,
+    fontWeight: "600",
+  },
+  wbLikesRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    marginTop: 6,
+  },
+  wbLikesText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#3F7A5B",
+  },
+  wbReadRow: {
+    alignSelf: "flex-start",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "#00DC64",
+    borderRadius: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    marginTop: 12,
+  },
+  wbReadText: {
+    fontSize: 12,
+    fontWeight: "800",
+    color: "#FFFFFF",
+  },
+
+  /* medium embed */
+  md: {
+    backgroundColor: "#FFFFFF",
+    padding: 20,
+  },
+  mdProviderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginBottom: 12,
+  },
+  mdDot: {
+    width: 9,
+    height: 9,
+    borderRadius: 4.5,
+    backgroundColor: "#000000",
+  },
+  mdProvider: {
+    fontSize: 13,
+    fontWeight: "800",
+    letterSpacing: 0.2,
+    color: "#292929",
+  },
+  mdHeroWrap: {
+    borderRadius: 16,
+    overflow: "hidden",
+    marginBottom: 14,
+    backgroundColor: "#F5F5F5",
+  },
+  mdHero: {
+    width: "100%",
+    aspectRatio: 1.6,
+  },
+  mdTitle: {
+    fontSize: 22,
+    lineHeight: 28,
+    fontWeight: "800",
+    color: "#0B0B0B",
+    letterSpacing: -0.3,
+  },
+  mdAuthor: {
+    fontSize: 14,
+    color: "#292929",
+    marginTop: 8,
+    fontWeight: "700",
+  },
+  mdExcerpt: {
+    fontSize: 14,
+    color: "#6B6B6B",
+    lineHeight: 20,
+    marginTop: 8,
+    fontWeight: "400",
+  },
+  mdFooterRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+    marginTop: 14,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: "#EFEFEF",
+  },
+  mdFooterText: {
+    flex: 1,
+    fontSize: 12,
+    fontWeight: "400",
+    color: "#8A8A8A",
+  },
+  mdClapRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    backgroundColor: "#F5F5F5",
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  mdClapMark: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: "#1A8917",
+  },
+  mdClapText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#1A8917",
   },
 });
 

@@ -109,6 +109,36 @@ export type LinkPreview = {
   isLaunch: boolean;
   tagline: string | null;
   upvotes: number | null;
+  /** YouTube Music (music.youtube.com) — same worker data as YouTube. */
+  isYouTubeMusic: boolean;
+  /** JioSaavn track/album/playlist. */
+  isJioSaavn: boolean;
+  /** Gaana track/album/playlist. */
+  isGaana: boolean;
+  /** Apple Music entity (music.apple.com). */
+  isAppleMusic: boolean;
+  /** Netflix title page. */
+  isNetflix: boolean;
+  /** Amazon Prime Video title. */
+  isPrimeVideo: boolean;
+  /** Disney+ Hotstar title. */
+  isHotstar: boolean;
+  /** Pocket FM audio-series episode. */
+  isPocketFm: boolean;
+  /** Kuku FM audio-series episode. */
+  isKukuFm: boolean;
+  /** Apple Podcasts episode (podcasts.apple.com). */
+  isApplePodcasts: boolean;
+  /** Wattpad story. */
+  isWattpad: boolean;
+  /** Pratilipi story/novel. */
+  isPratilipi: boolean;
+  /** Webtoon comic. */
+  isWebtoon: boolean;
+  /** Amazon Kindle book (amazon.* book pages). */
+  isKindle: boolean;
+  /** Medium article. */
+  isMedium: boolean;
 };
 
 export type TwitchWorkerPayload = {
@@ -187,6 +217,21 @@ function platformDefaults() {
     isLaunch: false,
     tagline: null as string | null,
     upvotes: null as number | null,
+    isYouTubeMusic: false,
+    isJioSaavn: false,
+    isGaana: false,
+    isAppleMusic: false,
+    isNetflix: false,
+    isPrimeVideo: false,
+    isHotstar: false,
+    isPocketFm: false,
+    isKukuFm: false,
+    isApplePodcasts: false,
+    isWattpad: false,
+    isPratilipi: false,
+    isWebtoon: false,
+    isKindle: false,
+    isMedium: false,
   };
 }
 
@@ -1462,6 +1507,34 @@ function blankFallback(url: string, siteName: string): LinkPreview {
   };
 }
 
+/* ---------------- Generic OG-backed brand platform ---------------- */
+
+/** Best-effort OG fetch for brand platforms, stamped with the given flags. */
+async function fetchBrandPreview(
+  url: string,
+  siteName: string,
+  flags: Partial<LinkPreview>,
+): Promise<LinkPreview | null> {
+  const og = await fetchOgWithFallback(url, siteName);
+  if (!og) return null;
+  return { ...og, siteName: og.siteName || siteName, ...flags };
+}
+
+/** Flag-marked skeleton so the UI still auto-switches when fetch fails. */
+function brandFallback(url: string, siteName: string, flags: Partial<LinkPreview>): LinkPreview {
+  return { ...blankFallback(url, siteName), ...flags };
+}
+
+/** True when the hostname matches a brand root or any of its subdomains. */
+function hostIs(url: string, ...roots: string[]): boolean {
+  try {
+    const host = new URL(url.trim()).hostname.toLowerCase();
+    return roots.some((root) => host === root || host.endsWith("." + root));
+  } catch {
+    return false;
+  }
+}
+
 /* ---------------- LinkedIn (post — OG / manual) ---------------- */
 
 export function isLinkedInUrl(url: string): boolean {
@@ -2147,6 +2220,7 @@ async function fetchKindlePreview(url: string): Promise<LinkPreview | null> {
     title: ld?.title || base.title,
     image: ld?.image || amazonImageFromUrl(url) || base.image,
     isBook: true,
+    isKindle: true,
     author: ld?.author || base.author,
     pages: ld?.pages ?? null,
     commerceRating: ld?.rating ?? null,
@@ -2173,6 +2247,96 @@ async function fetchLaunchPreview(url: string): Promise<LinkPreview | null> {
 
 function launchFallback(url: string): LinkPreview {
   return { ...blankFallback(url, "Product Hunt"), isLaunch: true };
+}
+
+/* ---------------- Entertainment, podcasts & reading platforms ---------------- */
+
+export function isYouTubeMusicUrl(url: string): boolean {
+  try {
+    return new URL(url.trim()).hostname.toLowerCase() === "music.youtube.com";
+  } catch {
+    return false;
+  }
+}
+
+export function isJioSaavnUrl(url: string): boolean {
+  return hostIs(url, "jiosaavn.com", "saavn.com");
+}
+
+export function isGaanaUrl(url: string): boolean {
+  return hostIs(url, "gaana.com");
+}
+
+export function isAppleMusicUrl(url: string): boolean {
+  try {
+    const host = new URL(url.trim()).hostname.toLowerCase();
+    return host === "music.apple.com" || host.endsWith(".music.apple.com");
+  } catch {
+    return false;
+  }
+}
+
+export function isNetflixUrl(url: string): boolean {
+  return hostIs(url, "netflix.com");
+}
+
+export function isPrimeVideoUrl(url: string): boolean {
+  try {
+    const u = new URL(url.trim());
+    const host = u.hostname.toLowerCase();
+    if (host === "primevideo.com" || host.endsWith(".primevideo.com")) return true;
+    return host.endsWith("amazon.com") && /\/gp\/video\//i.test(u.pathname);
+  } catch {
+    return false;
+  }
+}
+
+export function isHotstarUrl(url: string): boolean {
+  return hostIs(url, "hotstar.com", "disneyplushotstar.com");
+}
+
+export function isPocketFmUrl(url: string): boolean {
+  return hostIs(url, "pocketfm.in", "pocketfm.com");
+}
+
+export function isKukuFmUrl(url: string): boolean {
+  return hostIs(url, "kukufm.com", "kukufm.in");
+}
+
+export function isApplePodcastsUrl(url: string): boolean {
+  try {
+    const host = new URL(url.trim()).hostname.toLowerCase();
+    return host === "podcasts.apple.com" || host.endsWith(".podcasts.apple.com");
+  } catch {
+    return false;
+  }
+}
+
+export function isWattpadUrl(url: string): boolean {
+  return hostIs(url, "wattpad.com");
+}
+
+export function isPratilipiUrl(url: string): boolean {
+  return hostIs(url, "pratilipi.com");
+}
+
+export function isWebtoonUrl(url: string): boolean {
+  return hostIs(url, "webtoons.com");
+}
+
+export function isMediumUrl(url: string): boolean {
+  return hostIs(url, "medium.com");
+}
+
+/** Fetch-then-fallback for a generic brand flag; returns the finished preview. */
+async function brandChain(
+  url: string,
+  siteName: string,
+  flags: Partial<LinkPreview>,
+  finish: (preview: LinkPreview) => LinkPreview,
+): Promise<LinkPreview> {
+  const preview = await fetchBrandPreview(url, siteName, flags);
+  return finish(preview || brandFallback(url, siteName, flags));
 }
 
 /** 65 → "1:05", 3665 → "1:01:05". */
@@ -2283,11 +2447,36 @@ export async function fetchLinkPreview(input: string): Promise<LinkPreview> {
     return finish(tweetFallback(url));
   }
 
+  if (isYouTubeMusicUrl(url)) {
+    const yt = await fetchYouTubePreview(url);
+    const base = yt || youtubeFallback(url);
+    return finish({
+      ...base,
+      isYouTube: false,
+      isYouTubeMusic: true,
+      siteName: base.siteName || "YouTube Music",
+    });
+  }
+
   if (isYouTubeUrl(url)) {
     const yt = await fetchYouTubePreview(url);
     if (yt) return finish(yt);
     return finish(youtubeFallback(url));
   }
+
+  if (isNetflixUrl(url)) return brandChain(url, "Netflix", { isNetflix: true }, finish);
+  if (isPrimeVideoUrl(url)) return brandChain(url, "Prime Video", { isPrimeVideo: true }, finish);
+  if (isHotstarUrl(url)) return brandChain(url, "Hotstar", { isHotstar: true }, finish);
+  if (isJioSaavnUrl(url)) return brandChain(url, "JioSaavn", { isJioSaavn: true }, finish);
+  if (isGaanaUrl(url)) return brandChain(url, "Gaana", { isGaana: true }, finish);
+  if (isAppleMusicUrl(url)) return brandChain(url, "Apple Music", { isAppleMusic: true }, finish);
+  if (isKukuFmUrl(url)) return brandChain(url, "Kuku FM", { isKukuFm: true }, finish);
+  if (isApplePodcastsUrl(url)) return brandChain(url, "Apple Podcasts", { isApplePodcasts: true }, finish);
+  if (isPocketFmUrl(url)) return brandChain(url, "Pocket FM", { isPocketFm: true }, finish);
+  if (isWattpadUrl(url)) return brandChain(url, "Wattpad", { isWattpad: true }, finish);
+  if (isPratilipiUrl(url)) return brandChain(url, "Pratilipi", { isPratilipi: true }, finish);
+  if (isWebtoonUrl(url)) return brandChain(url, "Webtoon", { isWebtoon: true }, finish);
+  if (isMediumUrl(url)) return brandChain(url, "Medium", { isMedium: true }, finish);
 
   if (isTikTokUrl(url)) {
     const tt = await fetchTikTokPreview(url);
