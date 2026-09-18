@@ -7,7 +7,7 @@ Built with Expo (React Native), `expo-router`, and NativeWind.
 ## Features
 
 - **Automatic link detection** — paste any URL and LinkSnap picks the right template, populating title, image, author, price, rating, and other platform-specific details from public metadata, oEmbed, JSON-LD, and keyless APIs.
-- **20 story templates** — editorial, spotlight, tweet, YouTube, clip, reddit post, music, repo, commerce, stream, LinkedIn, Indeed, restaurant, Pinterest, app, stay, game, book, and launch cards.
+- **Story templates** — tweet, YouTube, clip, reddit post, music, repo, commerce, stream, LinkedIn, Indeed, restaurant, Pinterest, app, stay, game, book, and launch cards.
 - **Full editor**:
   - Switch templates and pick a scene background (image, solid color, eyedropper, or custom HSV color).
   - Edit card details — author, headline, price, cuisine, ratings, and more — per template.
@@ -18,19 +18,18 @@ Built with Expo (React Native), `expo-router`, and NativeWind.
 
 Paste any of these links and the app auto-selects the matching template (every template is also reachable from the Presets panel and fully editable):
 
-- **Social**: X/Twitter posts, Reddit posts, Pinterest pins
+- **Social**: X/Twitter posts, Reddit posts, Pinterest pins, LinkedIn posts, Indeed listings
 - **Video**: YouTube (video / Short / Live / Premiere), Twitch (live / clip / VOD / channel), TikTok clips
 - **Music**: Spotify (track / album / playlist / artist / show / episode)
 - **Code**: GitHub repositories
 - **Commerce**: Amazon, Flipkart, Meesho, AliExpress, eBay, Etsy
-- **Jobs**: LinkedIn posts, Indeed listings
 - **Food**: Zomato & Swiggy restaurant pages
 - **Apps**: App Store & Google Play listings
 - **Travel**: Airbnb and similar stay listings
 - **Games**: Steam store pages
 - **Books**: Goodreads, Google Books, Open Library, and Amazon Kindle / book pages (`/dp/`, `/gp/product/`, `/kindle/` — physical Amazon products stay on the commerce template)
 - **Launch**: Product Hunt launches
-- Everything else falls back to a generic editorial card.
+- Everything else falls back to a generic reddit post card.
 
 Metadata is fetched without server code: direct fetch plus an `r.jina.ai` reader proxy fallback, with keyless public APIs for App Store (iTunes Lookup) and Steam, and JSON-LD parsing for eBay, Indeed, restaurants, and Goodreads.
 

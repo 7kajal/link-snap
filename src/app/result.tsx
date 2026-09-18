@@ -127,7 +127,6 @@ type PresetCategoryId =
   | "custom"
   | "blog"
   | "social"
-  | "jobs"
   | "entertainment"
   | "podcasts"
   | "gaming"
@@ -145,8 +144,6 @@ type PresetCategory = {
 };
 
 const PRESET_NAMES: Record<CardTheme, string> = {
-  editorial: "Editorial",
-  spotlight: "Spotlight",
   tweet: "X Post",
   youtube: "YouTube",
   clip: "TikTok",
@@ -186,10 +183,8 @@ const PRESET_NAMES: Record<CardTheme, string> = {
 };
 
 const PRESET_CATEGORIES: PresetCategory[] = [
-  { id: "custom", label: "Custom", themes: ["editorial", "spotlight"] },
-  { id: "blog", label: "Blog", themes: ["editorial", "spotlight", "post", "medium"] },
+  { id: "blog", label: "Blog", themes: ["medium"] },
   { id: "social", label: "Social", themes: ["tweet", "post", "linkedin", "pinterest"] },
-  { id: "jobs", label: "Jobs", themes: ["indeed", "linkedin"] },
   {
     id: "entertainment",
     label: "Entertainment",
@@ -197,12 +192,12 @@ const PRESET_CATEGORIES: PresetCategory[] = [
   },
   { id: "podcasts", label: "Podcasts", themes: ["kukufm", "applepodcasts", "pocketfm"] },
   { id: "gaming", label: "Gaming", themes: ["game"] },
-  { id: "books", label: "Book & Comics", themes: ["book", "kindle", "wattpad", "pratilipi", "webtoon"] },
-  { id: "shopping", label: "Shopping", themes: ["commerce", "app", "amazon", "meesho", "flipkart"] },
+  { id: "books", label: "Book & Comics", themes: ["kindle", "wattpad", "pratilipi", "webtoon"] },
+  { id: "shopping", label: "Shopping", themes: ["app", "amazon", "meesho", "flipkart"] },
   { id: "food", label: "Food", themes: ["zomato", "swiggy"] },
   { id: "travel", label: "Travel", themes: ["stay"] },
   { id: "launch", label: "Launch", themes: ["launch"] },
-  { id: "developer", label: "Developer", themes: ["repo", "app"] },
+  { id: "developer", label: "Developer", themes: ["repo"] },
 ];
 
 type ThemeField = {
@@ -355,7 +350,7 @@ export default function ResultScreen() {
   });
 
   // Customization States
-  const [theme, setTheme] = useState<CardTheme>("editorial");
+  const [theme, setTheme] = useState<CardTheme>("post");
   const [presetCategory, setPresetCategory] =
     useState<PresetCategoryId | null>(null);
   const [presetPagerWidth, setPresetPagerWidth] = useState(0);
@@ -404,8 +399,13 @@ export default function ResultScreen() {
       return "entertainment";
     if (preview.isKukuFm || preview.isApplePodcasts || preview.isPocketFm)
       return "podcasts";
-    if (preview.isTweet || preview.isReddit || preview.isPinterest) return "social";
-    if (preview.isLinkedIn || preview.isIndeed) return "jobs";
+    if (
+      preview.isTweet ||
+      preview.isReddit ||
+      preview.isPinterest ||
+      preview.isLinkedIn
+    )
+      return "social";
     if (preview.isGitHub) return "developer";
     if (preview.isLaunch) return "launch";
     if (preview.isStay) return "travel";
@@ -2647,7 +2647,7 @@ export default function ResultScreen() {
                                   </View>
                                 </Pressable>
                               ) : null}
-                              {["editorial", "spotlight", "medium"].includes(
+                              {["medium"].includes(
                                 theme,
                               ) ? (
                                 <Pressable

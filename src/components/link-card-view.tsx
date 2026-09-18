@@ -42,7 +42,6 @@ import {
 import Svg, { Defs, RadialGradient, Rect, Stop } from "react-native-svg";
 import { domainFromUrl, getPalette, type Palette } from "@/lib/palette";
 import { SCENE_SCALE } from "@/lib/pixel-sampler";
-import { useImageSize } from "@/lib/use-image-size";
 import {
   commerceStoreFromUrl,
   formatCompact,
@@ -56,7 +55,7 @@ import {
   type YouTubeKind,
 } from "@/lib/link-preview";
 
-export type CardTheme = "editorial" | "spotlight" | "tweet" | "youtube" | "clip" | "post" | "music" | "repo" | "commerce" | "stream" | "linkedin" | "indeed" | "zomato" | "swiggy" | "pinterest" | "app" | "stay" | "game" | "book" | "launch" | "ytmusic" | "jiosaavn" | "gaana" | "applemusic" | "netflix" | "primevideo" | "hotstar" | "kukufm" | "applepodcasts" | "pocketfm" | "kindle" | "wattpad" | "pratilipi" | "webtoon" | "medium" | "amazon" | "meesho" | "flipkart";
+export type CardTheme = "tweet" | "youtube" | "clip" | "post" | "music" | "repo" | "commerce" | "stream" | "linkedin" | "indeed" | "zomato" | "swiggy" | "pinterest" | "app" | "stay" | "game" | "book" | "launch" | "ytmusic" | "jiosaavn" | "gaana" | "applemusic" | "netflix" | "primevideo" | "hotstar" | "kukufm" | "applepodcasts" | "pocketfm" | "kindle" | "wattpad" | "pratilipi" | "webtoon" | "medium" | "amazon" | "meesho" | "flipkart";
 export type AspectRatio = "story" | "square";
 export type CardBackgroundMode = "image" | "color";
 export type CardColorScheme = "light" | "dark";
@@ -143,8 +142,6 @@ export type LinkCardViewProps = ViewProps & {
   readMinutes?: string;
   dateText?: string;
   location?: string;
-  /** Site favicon (from parsed metadata) shown next to the publisher label. */
-  favicon?: string | null;
   /** Tweet/X extras (auto from oEmbed when available, else manual). */
   handle?: string;
   verified?: boolean;
@@ -205,8 +202,6 @@ export { SCENE_SCALE };
 const SCENE_VEIL = "rgba(10, 10, 18, 0.42)";
 
 const CARD_META: Record<CardTheme, { surface: string; radius: number; border: string }> = {
-  editorial: { surface: "#FFFFFF", radius: 24, border: "rgba(0, 0, 0, 0.08)" },
-  spotlight: { surface: "#0D1A3F", radius: 24, border: "rgba(255, 255, 255, 0.18)" },
   tweet: { surface: "#FFFFFF", radius: 18, border: "rgba(0, 0, 0, 0.08)" },
   youtube: { surface: "#0F0F0F", radius: 20, border: "rgba(255, 255, 255, 0.15)" },
   clip: { surface: "#000000", radius: 18, border: "rgba(255, 255, 255, 0.15)" },
@@ -602,7 +597,7 @@ const LANG_COLORS: Record<string, string> = {
 const LinkCardView = forwardRef<View, LinkCardViewProps>(function LinkCardView(
   {
     preview,
-    theme = "editorial",
+    theme = "post",
     aspectRatio = "story",
     safeMode = false,
     colorScheme = "light",
@@ -620,7 +615,6 @@ const LinkCardView = forwardRef<View, LinkCardViewProps>(function LinkCardView(
     location,
     handle,
     verified,
-    favicon,
     likes,
     replies,
     avatarUrl,
@@ -1005,22 +999,6 @@ const LinkCardView = forwardRef<View, LinkCardViewProps>(function LinkCardView(
         />
       );
     }
-    if (theme === "spotlight") {
-      return (
-        <SpotlightCard
-          isStory={isStory}
-          title={title}
-          excerpt={excerpt}
-          authorName={authorName}
-          minutes={minutes}
-          dateLabel={dateLabel}
-          pill={pill}
-          image={previewImage}
-          hideReadTime={hideReadTime}
-        />
-      );
-    }
-    //
     if (theme === "ytmusic") {
       return (
         <YtMusicCard
@@ -1182,19 +1160,7 @@ const LinkCardView = forwardRef<View, LinkCardViewProps>(function LinkCardView(
         />
       );
     }
-    return (
-      <DynamicCard
-        isStory={isStory}
-        cardWidth={width}
-        title={title}
-        excerpt={excerpt}
-        publisher={publisher}
-        minutes={minutes}
-        image={previewImage}
-        favicon={favicon ?? preview?.favicon ?? null}
-        hideReadTime={hideReadTime}
-      />
-    );
+    return null;
   };
 
   return (
@@ -2395,12 +2361,6 @@ function YtMusicCard({
           </Text>
         </View>
       </View>
-      <View style={styles.yiPlayRow}>
-        <View style={styles.yiPlay}>
-          <Play size={13} color="#FFFFFF" fill="#FFFFFF" strokeWidth={2.4} />
-        </View>
-        <Text style={styles.yiPlayText}>Play on YouTube Music</Text>
-      </View>
     </View>
   );
 }
@@ -2456,10 +2416,6 @@ function JioSaavnCard({
       </View>
       <View style={styles.jsBar}>
         <View style={styles.jsBarFill} />
-      </View>
-      <View style={styles.jsFooter}>
-        <Play size={12} color="#FF4D00" fill="#FF4D00" strokeWidth={2.4} />
-        <Text style={styles.jsFooterText}>Listen on JioSaavn</Text>
       </View>
     </View>
   );
@@ -2954,10 +2910,6 @@ function WattpadCard({
           ) : null}
         </View>
       </View>
-      <View style={styles.wtReadRow}>
-        <BookOpen size={13} color="#FFFFFF" strokeWidth={2.2} />
-        <Text style={styles.wtReadText}>Read now</Text>
-      </View>
     </View>
   );
 }
@@ -3000,9 +2952,6 @@ function PratilipiCard({
             <BookOpen size={22} color="#FF6B2C" strokeWidth={1.6} />
           </View>
         )}
-        <View style={styles.prChip}>
-          <Text style={styles.prChipText}>Continue Reading</Text>
-        </View>
       </View>
     </View>
   );
@@ -3051,10 +3000,6 @@ function WebtoonCard({
             </View>
           ) : null}
         </View>
-      </View>
-      <View style={styles.wbReadRow}>
-        <Play size={12} color="#FFFFFF" fill="#FFFFFF" strokeWidth={2.4} />
-        <Text style={styles.wbReadText}>Read series</Text>
       </View>
     </View>
   );
@@ -3107,10 +3052,6 @@ function MediumCard({
             ? dateLabel
             : `${dateLabel ? `${dateLabel} · ` : ""}${minutes} min read`}
         </Text>
-        <View style={styles.mdClapRow}>
-          <View style={styles.mdClapMark} />
-          <Text style={styles.mdClapText}>Follow</Text>
-        </View>
       </View>
     </View>
   );
@@ -3354,170 +3295,6 @@ function TweetCard({
   );
 }
 
-/* ---------------- Template A: white Medium-style editorial card ---------------- */
-
-/**
- * Adaptive default card for generic (non-platform) links.
- *
- * - Any measurable image: laid out top-down as a full-width hero, preserving
- *   its shape. Portrait images get more height than landscape images.
- * - No image or an image that cannot be measured: compact text-first layout.
- */
-function DynamicCard({
-  isStory,
-  cardWidth,
-  title,
-  excerpt,
-  publisher,
-  minutes,
-  image,
-  favicon,
-  hideReadTime,
-}: {
-  isStory: boolean;
-  cardWidth: number;
-  title: string;
-  excerpt: string;
-  publisher: string;
-  minutes: number;
-  image: string | null;
-  favicon: string | null;
-  hideReadTime?: boolean;
-}) {
-  const colors = useCardColors();
-  const size = useImageSize(image);
-  const hasSize = size.loaded && size.width > 0 && size.height > 0;
-
-  const footer = (
-    <View style={[styles.edFooter, { borderTopColor: colors.divider }]}>
-      {favicon ? (
-        <Image source={{ uri: favicon }} style={styles.edAvatar} resizeMode="cover" />
-      ) : (
-        <View style={styles.edAvatar}>
-          <Text style={styles.edAvatarText}>{getInitials(publisher)}</Text>
-        </View>
-      )}
-      <Text style={[styles.edAuthor, { color: colors.secondary }]} numberOfLines={1}>
-        {publisher}
-      </Text>
-      {hideReadTime ? null : (
-        <Text style={[styles.edReadTime, { color: colors.muted }]} numberOfLines={1}>
-          {`${minutes} min read`}
-        </Text>
-      )}
-    </View>
-  );
-
-  if (image && hasSize) {
-    const heroRatio = size.width / size.height;
-    // Actual usable card width: 88% scene − 1px borders − 16px padding each side.
-    const contentWidth = Math.max(120, cardWidth * CARD_W_RATIO - 34);
-    // Keep enough room for metadata while allowing portrait assets to grow.
-    const heroMax = Math.max(160, contentWidth * (heroRatio < 1 ? 1.05 : 0.72));
-    const heroHeight = Math.min(contentWidth / heroRatio, heroMax);
-
-    return (
-      <View style={[styles.editorial, { backgroundColor: colors.surface }]}>
-        <View style={[styles.dynHeroWrap, styles.dynHeroFirst, { height: heroHeight }]}>
-          <CardMedia uri={image} style={styles.dynHero} />
-        </View>
-        <Text style={[styles.edTitle, styles.dynTitleBelowHero, { color: colors.primary }]} numberOfLines={2}>
-          {title}
-        </Text>
-        {excerpt ? (
-          <Text style={[styles.edExcerpt, styles.dynExcerptBelowHero, { color: colors.secondary }]} numberOfLines={2}>
-            {excerpt}
-          </Text>
-        ) : null}
-        {footer}
-      </View>
-    );
-  }
-
-  return (
-    <View style={[styles.editorial, { backgroundColor: colors.surface }]}>
-      <Text style={[styles.edTitle, { color: colors.primary }]} numberOfLines={isStory ? 3 : 2}>
-        {title}
-      </Text>
-      <View style={styles.edRow}>
-        {excerpt ? (
-          <Text style={[styles.edExcerpt, { color: colors.secondary }]} numberOfLines={3}>
-            {excerpt}
-          </Text>
-        ) : null}
-        {image ? (
-          <CardMedia uri={image} style={styles.edThumb} />
-        ) : null}
-      </View>
-      {footer}
-    </View>
-  );
-}
-
-/* ---------------- Template B: dark immersive travel card ---------------- */
-
-function SpotlightCard({
-  isStory,
-  title,
-  excerpt,
-  authorName,
-  minutes,
-  dateLabel,
-  pill,
-  image,
-  hideReadTime,
-}: {
-  isStory: boolean;
-  title: string;
-  excerpt: string;
-  authorName: string;
-  minutes: number;
-  dateLabel: string;
-  pill: string;
-  image: string | null;
-  hideReadTime?: boolean;
-}) {
-  const colors = useCardColors();
-  return (
-    <View style={[styles.spot, { backgroundColor: colors.surface }]}>
-      <View style={styles.spotMeta}>
-        {pill ? (
-          <View style={styles.spotPill}>
-            <MapPin size={11} color="#FACC15" strokeWidth={2.5} />
-            <Text style={styles.spotPillText} numberOfLines={1}>
-              {pill}
-            </Text>
-          </View>
-        ) : null}
-        <Text style={[styles.spotMetaText, { color: colors.muted }]} numberOfLines={1}>
-          {hideReadTime ? dateLabel : `${dateLabel} • ${minutes} min read`}
-        </Text>
-      </View>
-      <Text style={[styles.spotTitle, { color: colors.primary }]} numberOfLines={isStory ? 3 : 2}>
-        {title}
-      </Text>
-      {excerpt ? (
-        <Text style={[styles.spotExcerpt, { color: colors.secondary }]} numberOfLines={3}>
-          {excerpt}
-        </Text>
-      ) : null}
-      {image ? (
-        <View style={styles.spotHeroWrap}>
-          <CardMedia uri={image} style={styles.spotHero} />
-        </View>
-      ) : null}
-      <View style={[styles.spotFooter, { borderTopColor: colors.divider }]}>
-        <View style={styles.spotAvatar}>
-          <Text style={styles.spotAvatarText}>{getInitials(authorName).charAt(0)}</Text>
-        </View>
-        <Text style={[styles.spotAuthor, { color: colors.primary }]} numberOfLines={1}>
-          {authorName}
-        </Text>
-      </View>
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
   canvas: {
     width: "100%",
@@ -3580,181 +3357,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     overflow: "hidden",
     backgroundColor: "transparent",
-  },
-
-  /* editorial embed */
-  editorial: {
-    backgroundColor: "#FFFFFF",
-    padding: 16,
-  },
-  dynHeroWrap: {
-    width: "100%",
-    borderRadius: 12,
-    overflow: "hidden",
-    backgroundColor: "#F5F5F5",
-    marginTop: 10,
-  },
-  dynHeroFirst: {
-    marginTop: 0,
-  },
-  dynHero: {
-    width: "100%",
-    height: "100%",
-  },
-  dynTitleBelowHero: {
-    marginTop: 10,
-  },
-  dynExcerptBelowHero: {
-    marginTop: 10,
-    flex: 0,
-  },
-  edTitle: {
-    fontSize: 19,
-    lineHeight: 25,
-    fontWeight: "800",
-    color: "#161616",
-    letterSpacing: -0.3,
-  },
-  edRow: {
-    flexDirection: "row",
-    gap: 12,
-    marginTop: 8,
-  },
-  edExcerpt: {
-    flex: 1,
-    fontSize: 14,
-    lineHeight: 21,
-    color: "#525252",
-  },
-  edThumb: {
-    width: 76,
-    height: 76,
-    borderRadius: 10,
-    backgroundColor: "#F5F5F5",
-  },
-  edFooter: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    marginTop: 12,
-    paddingTop: 10,
-    borderTopWidth: 1,
-    borderTopColor: "#F0F0F0",
-  },
-  edAvatar: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    backgroundColor: "#000000",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  edAvatarText: {
-    color: "#FFFFFF",
-    fontWeight: "800",
-    fontSize: 11,
-    letterSpacing: 0.5,
-  },
-  edAuthor: {
-    flex: 1,
-    fontSize: 13,
-    fontWeight: "600",
-    color: "#333333",
-  },
-  edReadTime: {
-    fontSize: 12,
-    color: "#888888",
-    fontWeight: "500",
-  },
-
-  /* spotlight embed */
-  spot: {
-    backgroundColor: "#0D1A3F",
-    padding: 16,
-  },
-  spotMeta: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    marginBottom: 8,
-  },
-  spotPill: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    backgroundColor: "rgba(8,14,34,0.85)",
-    borderWidth: 1,
-    borderColor: "rgba(250,204,21,0.4)",
-    borderRadius: 999,
-    paddingHorizontal: 9,
-    paddingVertical: 4,
-    maxWidth: "55%",
-  },
-  spotPillText: {
-    color: "#FFFFFF",
-    fontSize: 11,
-    fontWeight: "700",
-    flexShrink: 1,
-  },
-  spotMetaText: {
-    flex: 1,
-    fontSize: 12,
-    color: "#CBD5E1",
-    fontWeight: "500",
-  },
-  spotTitle: {
-    fontSize: 20,
-    lineHeight: 26,
-    fontWeight: "800",
-    color: "#FFFFFF",
-    letterSpacing: -0.2,
-  },
-  spotExcerpt: {
-    fontSize: 14,
-    lineHeight: 21,
-    color: "#B9C1D6",
-    marginTop: 8,
-  },
-  spotHeroWrap: {
-    marginTop: 12,
-    borderRadius: 12,
-    overflow: "hidden",
-    aspectRatio: 16 / 9,
-    backgroundColor: "#16265A",
-  },
-  spotHero: {
-    width: "100%",
-    height: "100%",
-  },
-  spotFooter: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    marginTop: 12,
-    paddingTop: 10,
-    borderTopWidth: 1,
-    borderTopColor: "#2A407C",
-  },
-  spotAvatar: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    backgroundColor: "rgba(253,224,71,0.14)",
-    borderWidth: 1,
-    borderColor: "rgba(253,224,71,0.35)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  spotAvatarText: {
-    color: "#FDE047",
-    fontWeight: "800",
-    fontSize: 13,
-  },
-  spotAuthor: {
-    flex: 1,
-    color: "#FFFFFF",
-    fontSize: 13,
-    fontWeight: "600",
   },
 
   /* tweet embed */
@@ -5308,28 +4910,6 @@ const styles = StyleSheet.create({
     marginTop: 3,
     fontWeight: "500",
   },
-  yiPlayRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    marginTop: 14,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: "#1F1F1F",
-  },
-  yiPlay: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: "#FF0033",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  yiPlayText: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: "#E5E7EB",
-  },
 
   /* jiosaavn embed */
   js: {
@@ -5415,17 +4995,6 @@ const styles = StyleSheet.create({
     height: "100%",
     borderRadius: 2,
     backgroundColor: "#FF4D00",
-  },
-  jsFooter: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 7,
-    marginTop: 8,
-  },
-  jsFooterText: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: "#E7E5E4",
   },
 
   /* gaana embed */
@@ -6200,22 +5769,6 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: "#5D8A74",
   },
-  wtReadRow: {
-    alignSelf: "flex-start",
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    backgroundColor: "#00B96B",
-    borderRadius: 999,
-    paddingHorizontal: 14,
-    paddingVertical: 7,
-    marginTop: 12,
-  },
-  wtReadText: {
-    fontSize: 12,
-    fontWeight: "800",
-    color: "#FFFFFF",
-  },
 
   /* pratilipi embed */
   pr: {
@@ -6279,19 +5832,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  prChip: {
-    flex: 1,
-    backgroundColor: "#FF6B2C",
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    alignItems: "center",
-  },
-  prChipText: {
-    fontSize: 12,
-    fontWeight: "800",
-    color: "#FFFFFF",
-  },
 
   /* webtoon embed */
   wb: {
@@ -6346,22 +5886,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "700",
     color: "#3F7A5B",
-  },
-  wbReadRow: {
-    alignSelf: "flex-start",
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    backgroundColor: "#00DC64",
-    borderRadius: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 7,
-    marginTop: 12,
-  },
-  wbReadText: {
-    fontSize: 12,
-    fontWeight: "800",
-    color: "#FFFFFF",
   },
 
   /* medium embed */
@@ -6432,26 +5956,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "400",
     color: "#8A8A8A",
-  },
-  mdClapRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    backgroundColor: "#F5F5F5",
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-  },
-  mdClapMark: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: "#1A8917",
-  },
-  mdClapText: {
-    fontSize: 11,
-    fontWeight: "700",
-    color: "#1A8917",
   },
 });
 
