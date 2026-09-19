@@ -6,7 +6,7 @@ export type SpotifyKind = "track" | "album" | "playlist" | "artist" | "show" | "
 
 export type TwitchKind = "live" | "clip" | "video" | "channel";
 
-export type CommerceStore = "amazon" | "flipkart" | "meesho" | "ebay" | "etsy" | "aliexpress" | "other";
+export type CommerceStore = "amazon" | "flipkart" | "meesho" | "ebay" | "etsy" | "aliexpress" | "walmart" | "other";
 
 export type LinkPreview = {
   url: string;
@@ -73,6 +73,14 @@ export type LinkPreview = {
   commerceRating: number | null;
   commerceReviews: number | null;
   commerceSeller: string | null;
+  /** Product condition label (eBay: "New", "Used", "Open box"). */
+  commerceCondition: string | null;
+  /** Seller feedback score, e.g. "(4,231)" (eBay). */
+  commerceSellerFeedback: string | null;
+  /** Seller positive-feedback % (eBay). */
+  sellerFeedbackPercent: number | null;
+  /** Sold/available text, e.g. "28 sold" / "10+ available" (eBay). */
+  commerceSold: string | null;
   /** LinkedIn post (OG/manual; template auto-selects the LinkedIn layout). */
   isLinkedIn: boolean;
   headline: string | null;
@@ -139,6 +147,24 @@ export type LinkPreview = {
   isKindle: boolean;
   /** Medium article. */
   isMedium: boolean;
+  /** Blogger / Blogspot article. */
+  isBlogspot: boolean;
+  /** DEV Community (dev.to) article. */
+  isDevTo: boolean;
+  /** LinkedIn Pulse long-form article (linkedin.com/pulse/). */
+  isLinkedInArticle: boolean;
+  /** X (Twitter) long-form article (x.com/i/article or article-wrapped status). */
+  isXArticle: boolean;
+  /** Substack post. */
+  isSubstack: boolean;
+  /** WordPress.com post. */
+  isWordPress: boolean;
+  /** Hashnode article. */
+  isHashnode: boolean;
+  /** Walmart product page. */
+  isWalmart: boolean;
+  /** Article tags/labels (dev.to tags, Blogger labels, Hashnode tags). */
+  tags: string[] | null;
 };
 
 export type TwitchWorkerPayload = {
@@ -190,6 +216,10 @@ function platformDefaults() {
     commerceRating: null as number | null,
     commerceReviews: null as number | null,
     commerceSeller: null as string | null,
+    commerceCondition: null as string | null,
+    commerceSellerFeedback: null as string | null,
+    sellerFeedbackPercent: null as number | null,
+    commerceSold: null as string | null,
     isLinkedIn: false,
     headline: null as string | null,
     repostCount: null as number | null,
@@ -232,6 +262,15 @@ function platformDefaults() {
     isWebtoon: false,
     isKindle: false,
     isMedium: false,
+    isBlogspot: false,
+    isDevTo: false,
+    isLinkedInArticle: false,
+    isXArticle: false,
+    isSubstack: false,
+    isWordPress: false,
+    isHashnode: false,
+    isWalmart: false,
+    tags: null as string[] | null,
   };
 }
 
@@ -1064,9 +1103,10 @@ export function commerceStoreFromUrl(url: string): CommerceStore | null {
     if (host.includes("amazon.")) return "amazon";
     if (host.includes("flipkart.")) return "flipkart";
     if (host.includes("meesho.")) return "meesho";
-    if (host.includes("ebay.")) return "ebay";
-    if (host.includes("etsy.")) return "etsy";
+    if (host.includes("ebay.") || host === "ebay.com") return "ebay";
+    if (host.includes("etsy.") || host === "etsy.com") return "etsy";
     if (host.includes("aliexpress.")) return "aliexpress";
+    if (host.includes("walmart.") || host === "walmart.com") return "walmart";
     return null;
   } catch {
     return null;
@@ -1092,7 +1132,13 @@ function amazonImageFromUrl(url: string): string | null {
 export function withCommerce(base: LinkPreview, url: string): LinkPreview {
   const store = commerceStoreFromUrl(url);
   if (!store) return base;
-  return { ...base, isCommerce: true, commerceStore: store, siteName: base.siteName || store };
+  return {
+    ...base,
+    isCommerce: true,
+    commerceStore: store,
+    siteName: base.siteName || store,
+    isWalmart: store === "walmart" ? true : base.isWalmart,
+  };
 }
 
 export function parseEbayId(input: string): string | null {
@@ -1108,6 +1154,14 @@ export function parseEbayId(input: string): string | null {
 
 export function isEbayUrl(url: string): boolean {
   return parseEbayId(url) != null;
+}
+
+export function isEtsyUrl(url: string): boolean {
+  return hostIs(url, "etsy.com");
+}
+
+export function isWalmartUrl(url: string): boolean {
+  return hostIs(url, "walmart.com");
 }
 
 /** Depth-first search for a JSON-LD node whose @type matches any of `types`. */
@@ -1131,6 +1185,7 @@ export function parseEbayJsonLd(html: string): {
   name?: string;
   image?: string;
   price?: string;
+  wasPrice?: string;
   currency?: string;
   brand?: string;
   rating?: number;
@@ -1156,6 +1211,7 @@ function findProductNode(data: unknown): {
   name?: string;
   image?: string;
   price?: string;
+  wasPrice?: string;
   currency?: string;
   brand?: string;
   rating?: number;
@@ -1174,10 +1230,28 @@ function findProductNode(data: unknown): {
       const seller = (offers?.seller || offers?.offeredBy) as Record<string, unknown> | undefined;
       const img = Array.isArray(n.image) ? n.image[0] : n.image;
       const num = (v: unknown) => (typeof v === "number" ? v : typeof v === "string" && v !== "" ? Number(v) : undefined);
+      let wasPrice: string | undefined;
+      const specs = offers?.priceSpecification as Record<string, unknown> | undefined;
+      if (specs && (specs.minPrice != null || specs.maxPrice != null)) {
+        const lo = typeof offers?.price === "string" || typeof offers?.price === "number" ? Number(offers.price) : null;
+        const candidates = [specs.minPrice, specs.maxPrice].map(Number);
+        const other = candidates.find((c) => lo == null || !Number.isNaN(c) && Math.abs(c - lo) > 0.01);
+        if (other != null && !Number.isNaN(other) && other > (lo ?? 0)) wasPrice = String(other);
+      }
+      if (!wasPrice && Array.isArray(n.additionalProperty)) {
+        for (const prop of n.additionalProperty as unknown[]) {
+          const p = firstObj(prop);
+          if (p && /original|was|list/i.test(String(p.name ?? "")) && p.value != null) {
+            wasPrice = String(p.value);
+            break;
+          }
+        }
+      }
       return {
         name: typeof n.name === "string" ? n.name : undefined,
         image: typeof img === "string" ? img : undefined,
         price: offers && (offers.price ?? offers.lowPrice) != null ? String(offers.price ?? offers.lowPrice) : undefined,
+        wasPrice,
         currency: typeof offers?.priceCurrency === "string" ? (offers.priceCurrency as string) : undefined,
         brand: typeof brand === "string" ? brand : typeof brand?.name === "string" ? (brand.name as string) : undefined,
         rating: num(agg?.ratingValue) ?? undefined,
@@ -1339,6 +1413,7 @@ async function fetchMarketplacePreview(
   url: string,
   store: CommerceStore,
 ): Promise<LinkPreview | null> {
+  if (store === "ebay" || store === "etsy" || store === "walmart") return null;
   if (store !== "amazon" && store !== "flipkart" && store !== "meesho" && store !== "aliexpress") return null;
   try {
     const res = await fetch(url, {
@@ -1402,10 +1477,139 @@ async function fetchEbayPreview(url: string): Promise<LinkPreview | null> {  try
       image: ld.image || base.image,
       author: ld.seller || ld.brand || base.author,
       commercePrice: ld.price ? (ld.currency ? `${ld.currency} ${ld.price}` : ld.price) : null,
+      commerceMrp: ld.wasPrice ? (ld.currency ? `${ld.currency} ${ld.wasPrice}` : ld.wasPrice) : null,
       commerceRating: ld.rating ?? null,
       commerceReviews: ld.reviews ?? null,
       commerceSeller: ld.seller || null,
+      commerceCondition: conditionOf(html) || null,
+      commerceSold: soldTextOf(html),
+      sellerFeedbackPercent: feedbackPctOf(html),
+      commerceSellerFeedback: sellerFeedbackOf(html),
     };
+  } catch {
+    return null;
+  }
+}
+
+/** eBay DOM is often rendered server-side below the fold; these are all best-effort. */
+function conditionOf(html: string): string | null {
+  const m =
+    html.match(/"itemCondition"\s*:\s*"?([^",}]+)"?/i)?.[1] ||
+    html.match(/"conditionDisplayName"\s*:\s*"([^"]+)"/i)?.[1] ||
+    html.match(/<span[^>]*itemprop="itemCondition"[^>]*>([^<]+)<\/span>/i)?.[1] ||
+    null;
+  return m ? stripTags(m) : null;
+}
+
+function soldTextOf(html: string): string | null {
+  const m =
+    html.match(/(\d[\d,]*)\s+sold/i)?.[1] ||
+    html.match(/"soldCount"\s*:\s*"?(\d+)"?/i)?.[1] ||
+    null;
+  return m ? `${m} sold` : null;
+}
+
+function feedbackPctOf(html: string): number | null {
+  const m =
+    html.match(/([\d.]+)%\s*positive/i)?.[1] ||
+    html.match(/"positiveFeedbackPercent"\s*:\s*([\d.]+)/)?.[1] ||
+    null;
+  return m ? Number.parseFloat(m) || null : null;
+}
+
+function sellerFeedbackOf(html: string): string | null {
+  const m =
+    html.match(/\(([\d,]{2,})\)\s*[\d.]+%/i)?.[1] ||
+    html.match(/\bseller\s*\(([\d,]{2,})\)/i)?.[1] ||
+    html.match(/"feedbackScore"\s*:\s*([\d,]+)/)?.[1] ||
+    null;
+  return m ? `(${m})` : null;
+}
+
+/* ----- Etsy (OG + Product JSON-LD + price meta) ----- */
+
+export function parseEtsyHtml(html: string, url: string): LinkPreview | null {
+  const og = parseOpenGraph(html, url);
+  if (!og.title && !html.includes("etsy")) return null;
+  const ld = parseEbayJsonLd(html); // generic Product-block finder, not eBay-specific
+  const priceMeta =
+    html.match(/<meta[^>]+property="(?:product:price:amount|og:price:amount)"[^>]+content="([^"]+)"/i)?.[1] ||
+    html.match(/<meta[^>]+content="([^"]+)"[^>]+property="(?:product:price:amount|og:price:amount)"/i)?.[1] ||
+    null;
+  const currMeta =
+    html.match(/<meta[^>]+property="(?:product:price:currency|og:price:currency)"[^>]+content="([^"]+)"/i)?.[1] ||
+    html.match(/<meta[^>]+content="([^"]+)"[^>]+property="(?:product:price:currency|og:price:currency)"/i)?.[1] ||
+    null;
+  const shop =
+    html.match(/<a[^>]*href="[^"]*\/shop\/([^"]+)"[^>]*>([\s\S]*?)<\/a>/i)?.[2] ||
+    html.match(/"shopName"\s*:\s*"([^"]+)"/i)?.[1] ||
+    null;
+  const sellerName =
+    html.match(/"bySellerName"\s*:\s*"([^"]+)"/i)?.[1] ||
+    html.match(/<a[^>]*class="[^"]*shop-name[^"]*"[^>]*>([^<]+)<\/a>/i)?.[1] ||
+    (shop ? String(shop) : null);
+  const price = ld?.price || priceMeta;
+  const ratingTxt = html.match(/"rating"\s*:\s*([\d.]+)/)?.[1];
+  const reviewsTxt = html.match(/"ratingsCount"\s*:\s*(\d+)/)?.[1] || html.match(/"reviewCount"\s*:\s*(\d+)/)?.[1];
+
+  return {
+    ...og,
+    siteName: "Etsy",
+    title: ld?.name || og.title,
+    image: ld?.image || og.image,
+    author: sellerName || ld?.seller || og.author,
+    isCommerce: true,
+    commerceStore: "etsy",
+    commercePrice: price ? (currMeta || ld?.currency ? `${currMeta || ld?.currency} ${price}` : price) : null,
+    commerceRating: ld?.rating ?? (ratingTxt ? Number.parseFloat(ratingTxt) || null : null),
+    commerceReviews: ld?.reviews ?? (reviewsTxt ? Number(reviewsTxt) || null : null),
+    commerceSeller: sellerName || ld?.seller || null,
+    commerceSold: html.match(/([\d,]+)\s+(?:sales)/i)?.[1]
+      ? `${html.match(/([\d,]+)\s+(?:sales)/i)?.[1]} sold`
+      : null,
+  };
+}
+
+/* ----- Walmart (bot-blocked; best-effort only, og + embedded state) ----- */
+
+export function parseWalmartHtml(html: string, url: string): LinkPreview | null {
+  const og = parseOpenGraph(html, url);
+  if (!og.title && !html.toLowerCase().includes("walmart")) return null;
+  const price =
+    html.match(/"currentPrice"\s*:\s*"?([\d.]+)"?/i)?.[1] ||
+    html.match(/"price"\s*:\s*"?([\d.]+)"?/i)?.[1] ||
+    null;
+  const currency = html.match(/"currencyCode"\s*:\s*"([A-Z]{3})"/i)?.[1] || "USD";
+  const rating = html.match(/"averageRating"\s*:\s*([\d.]+)/i)?.[1];
+  const reviews = html.match(/"ratingCount"\s*:\s*(\d+)/i)?.[1] || html.match(/"reviewCount"\s*:\s*(\d+)/i)?.[1];
+  return {
+    ...og,
+    siteName: "Walmart",
+    isCommerce: true,
+    isWalmart: true,
+    commerceStore: "walmart",
+    commercePrice: price ? (currency === "USD" ? `$${price}` : `${currency} ${price}`) : null,
+    commerceRating: rating ? Number.parseFloat(rating) || null : null,
+    commerceReviews: reviews ? Number.parseInt(reviews, 10) || null : null,
+  };
+}
+
+/** Fetch + parse a bespoke commerce page (eBay/Etsy/Walmart share no generic path). */
+async function fetchBespokeCommercePreview(
+  url: string,
+  store: CommerceStore,
+): Promise<LinkPreview | null> {
+  try {
+    const res = await fetch(url, {
+      headers: { Accept: "text/html,application/xhtml+xml" },
+    });
+    if (!res.ok) return null;
+    const html = await res.text();
+    if (!html || !html.includes("<")) return null;
+    if (store === "ebay") return fetchEbayPreview(url);
+    if (store === "etsy") return parseEtsyHtml(html, url);
+    if (store === "walmart") return parseWalmartHtml(html, url);
+    return null;
   } catch {
     return null;
   }
@@ -1546,6 +1750,18 @@ export function isLinkedInUrl(url: string): boolean {
   }
 }
 
+/** LinkedIn long-form articles live under /pulse/ (vs /posts/ feed posts). */
+export function isLinkedInArticleUrl(url: string): boolean {
+  try {
+    const u = new URL(url.trim());
+    const host = u.hostname.toLowerCase();
+    if (!(host === "linkedin.com" || host.endsWith(".linkedin.com"))) return false;
+    return /\/pulse\//i.test(u.pathname);
+  } catch {
+    return false;
+  }
+}
+
 /** Strip the "Author on LinkedIn: …" og:title prefix. */
 export function cleanLinkedInText(text: string): string {
   const cleaned = text.trim();
@@ -1553,20 +1769,370 @@ export function cleanLinkedInText(text: string): string {
   return m ? (m[2].trim() || m[1].trim()) : cleaned;
 }
 
+/** Extract Article JSON-LD stats for a LinkedIn Pulse article. */
+export function parseLinkedInArticleJsonLd(html: string): {
+  headline?: string;
+  author?: string;
+  datePublished?: string;
+  likeCount?: number;
+  commentCount?: number;
+  image?: string;
+} | null {
+  const node = findLdNode(getJsonLdNodes(html), ["Article", "NewsArticle"]);
+  if (!node) return null;
+  const str = (v: unknown): string | null => {
+    const t = typeof v === "string" ? v : Array.isArray(v) && typeof v[0] === "string" ? v[0] : null;
+    return t ? cleanText(t) || null : null;
+  };
+  const authorField = node.author;
+  const author = typeof authorField === "string"
+    ? cleanText(authorField)
+    : firstObj(authorField)?.name
+      ? String(firstObj(authorField)?.name)
+      : null;
+  let likeCount: number | null = null;
+  let commentCount: number | null = null;
+  if (Array.isArray(node.interactionStatistic)) {
+    for (const stat of node.interactionStatistic as unknown[]) {
+      const s = firstObj(stat);
+      if (!s) continue;
+      const type = Array.isArray(s["@type"]) ? s["@type"][0] : s["@type"];
+      const count = numOr(s.userInteractionCount);
+      if (type === "LikeAction" && count != null) likeCount = count;
+      if (type === "CommentAction" && count != null) commentCount = count;
+    }
+  }
+  commentCount = commentCount ?? numOr(node.commentCount);
+
+  const img = typeof node.image === "string" ? node.image : Array.isArray(node.image) ? String(node.image[0] ?? "") : null;
+  return {
+    headline: str(node.headline) || undefined,
+    author: author || undefined,
+    datePublished: str(node.datePublished) || undefined,
+    likeCount: likeCount ?? undefined,
+    commentCount: commentCount ?? undefined,
+    image: img || undefined,
+  };
+}
+
 async function fetchLinkedInPreview(url: string): Promise<LinkPreview | null> {
   const og = await fetchOgWithFallback(url, "LinkedIn");
   if (!og) return null;
   const title = cleanLinkedInText(og.title || og.author || og.description || "");
-  return {
+  const base: LinkPreview = {
     ...og,
     siteName: "LinkedIn",
     isLinkedIn: true,
     headline: title || null,
   };
+  if (!isLinkedInArticleUrl(url)) return base;
+  let html: string | null = null;
+  try {
+    const res = await fetch(url);
+    if (res.ok) {
+      const text = await res.text();
+      if (text && text.includes("<")) html = text;
+    }
+  } catch {
+    // og-only fallback below
+  }
+  const ld = html ? parseLinkedInArticleJsonLd(html) : null;
+  return {
+    ...base,
+    isLinkedInArticle: true,
+    headline: ld?.headline || base.headline,
+    author: ld?.author || og.author,
+    publishedAt: ld?.datePublished || og.publishedAt,
+    likeCount: ld?.likeCount ?? og.likeCount ?? null,
+    replyCount: ld?.commentCount ?? og.replyCount ?? null,
+    image: ld?.image || og.image,
+  };
 }
 
 function linkedInFallback(url: string): LinkPreview {
   return { ...blankFallback(url, "LinkedIn"), isLinkedIn: true };
+}
+
+/* ---------------- Blogs & long-form platforms ---------------- */
+
+export function isBlogspotUrl(url: string): boolean {
+  try {
+    const host = new URL(url.trim()).hostname.toLowerCase();
+    return /(^|\.)blogspot\.[a-z.]+$/.test(host) || host.endsWith("blogger.com");
+  } catch {
+    return false;
+  }
+}
+
+export function isDevToUrl(url: string): boolean {
+  return hostIs(url, "dev.to", "devcommunity.net");
+}
+
+export function isSubstackUrl(url: string): boolean {
+  try {
+    const host = new URL(url.trim()).hostname.toLowerCase();
+    if (!(host === "substack.com" || host.endsWith(".substack.com"))) return false;
+    if (/^www\.substack\.com$/i.test(host)) return false;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function isWordPressUrl(url: string): boolean {
+  return hostIs(url, "wordpress.com");
+}
+
+export function isHashnodeUrl(url: string): boolean {
+  return hostIs(url, "hashnode.dev", "hashnode.com");
+}
+
+/** X long-form article URLs live under /i/article/ (the /i/status/ wrapper is detected by sniffing). */
+export function isXArticleUrl(url: string): boolean {
+  try {
+    const u = new URL(url.trim());
+    const host = u.hostname.replace(/^www\./, "").toLowerCase();
+    if (!(host === "twitter.com" || host === "x.com")) return false;
+    return /\/i\/article\//i.test(u.pathname);
+  } catch {
+    return false;
+  }
+}
+
+/** HEURISTIC: an /i/status/ page renders as an article when the SSR JSON carries
+ *  both an "Article"-typed entry and a "views" field (tweets have no views prop). */
+export function detectXArticle(html: string): boolean {
+  if (/\/i\/article\//i.test(html.slice(0, 600))) return true;
+  return /"Article"\s*:\s*\{/.test(html) && /"views"\s*:\s*"/.test(html);
+}
+
+/** Build an X "article" preview from a fetched page + its OG data. */
+function buildXArticlePreview(url: string, html: string | null, og: LinkPreview | null): LinkPreview {
+  let author = og?.author || null;
+  let handle = og?.handle || null;
+  let title = og?.title || "";
+  if (og?.title) {
+    const m = og.title.match(/^(.+?)\s*\(@([\w]+)\)\s*on\s*X$/i);
+    if (m) {
+      author = m[1].trim();
+      handle = m[2];
+      title = og.description || og.title;
+    }
+  }
+  return {
+    ...(og || blankFallback(url, "X")),
+    siteName: "X",
+    title: title || og?.description || "",
+    description: og?.description || "",
+    author,
+    handle,
+    image: og?.image || null,
+    isTweet: true,
+    isXArticle: true,
+  };
+}
+
+/** For X articles (x.com/i/article or a sniffed /i/status/). Null when not an article. */
+export async function fetchXArticlePreview(url: string): Promise<LinkPreview | null> {
+  if (!isXArticleUrl(url)) return null;
+  let html: string | null = null;
+  try {
+    const res = await fetch(url);
+    if (res.ok) {
+      const text = await res.text();
+      if (text && text.includes("<")) html = text;
+    }
+  } catch {
+    html = null;
+  }
+  const og = await fetchOgWithFallback(url, "X");
+  if (!html && !og) return null;
+  if (html && !detectXArticle(html) && !isXArticleUrl(url)) return null;
+  return buildXArticlePreview(url, html, og);
+}
+
+/** Ambiguous /i/status/ link: sniff the SSR payload to tell article from tweet. */
+export async function sniffXArticle(url: string): Promise<LinkPreview | null> {
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const html = await res.text();
+    if (!html || !html.includes("<") || !detectXArticle(html)) return null;
+    const og = await fetchOgWithFallback(url, "X");
+    return buildXArticlePreview(url, html, og);
+  } catch {
+    return null;
+  }
+}
+
+/** Extract "N min read" as a number (matching several SSR/DOM spellings). */
+function minReadOf(html: string): number | null {
+  const m =
+    html.match(/(\d{1,3})\s*min(?:ute)?\s*read/i)?.[1] ||
+    html.match(/"readingTime"\s*:\s*"?(\d+)"?/i)?.[1] ||
+    html.match(/"reading_time"\s*:\s*"?(\d+)"?/i)?.[1] ||
+    html.match(/"readTime"\s*:\s*"?(\d+)"?/i)?.[1] ||
+    html.match(/"read_time"\s*:\s*"?(\d+)"?/i)?.[1] ||
+    null;
+  const n = m ? Number.parseInt(m, 10) : NaN;
+  return Number.isFinite(n) && n > 0 && n < 240 ? n : null;
+}
+
+function metaTagContent(html: string, name: string): string | null {
+  const re = new RegExp(
+    `<meta[^>]+(?:name|property)=["']${name}["'][^>]+content=["']([^"']*)["']`,
+    "i",
+  );
+  return html.match(re)?.[1] ? stripTags(html.match(re)?.[1] || "") || null : null;
+}
+
+function tagLinksOf(html: string): string[] {
+  const found = [
+    ...html.matchAll(/<a[^>]+rel=["'][^"']*\btag\b[^"']*["'][^>]*>([\s\S]*?)<\/a>/gi),
+    ...html.matchAll(/<meta[^>]+property=["']article:tag["'][^>]+content=["']([^"']+)["']/gi),
+  ]
+    .map((m) => stripTags(m[1]))
+    .filter(Boolean);
+  return Array.from(new Set(found)).slice(0, 6);
+}
+
+export function parseSubstackHtml(html: string, url: string): LinkPreview | null {
+  const og = parseOpenGraph(html, url);
+  if (!og.title && !html.includes("substack")) return null;
+  let publication = og.siteName || null;
+  if (!publication) {
+    publication =
+      html.match(/"newsletter"\s*:\s*\{[\s\S]*?"name"\s*:\s*"([^"]+)"/i)?.[1] ||
+      html.match(/<meta[^>]+name=["']og:site_name["'][^>]+content=["']([^"']+)["']/i)?.[1] ||
+      null;
+  }
+  if (!publication) {
+    try {
+      const host = new URL(url.trim()).hostname;
+      const label = host.split(".")[0];
+      publication = label && label !== "www" && label !== "open" ? label.charAt(0).toUpperCase() + label.slice(1) : null;
+    } catch {
+      publication = null;
+    }
+  }
+  const author =
+    metaTagContent(html, "author") ||
+    html.match(/"author_name"\s*:\s*"([^"]+)"/i)?.[1] ||
+    og.author ||
+    null;
+  const likes = parseInt(html.match(/,?["']like_count["']\s*:\s*(\d+)/i)?.[1] || html.match(/"likeCount"\s*:\s*(\d+)/i)?.[1] || "", 10);
+  const comments = parseInt(html.match(/"comment_count"\s*:\s*(\d+)/i)?.[1] || html.match(/"commentCount"\s*:\s*(\d+)/i)?.[1] || "", 10);
+  const tagsMatch = html.match(/"postTags"\s*:\s*\[([\s\S]*?)\]/i)?.[1];
+  const tags = tagsMatch
+    ? Array.from(tagsMatch.matchAll(/"name"\s*:\s*"([^"]+)"/gi)).map((m) => m[1]).slice(0, 6)
+    : null;
+  return {
+    ...og,
+    siteName: publication || "Substack",
+    author,
+    publishedAt: og.publishedAt || metaTagContent(html, "article:published_time") || null,
+    readingMinutes: minReadOf(html),
+    likeCount: Number.isFinite(likes) && likes > 0 ? likes : null,
+    commentCount: Number.isFinite(comments) && comments > 0 ? comments : null,
+    tags: tags?.length ? tags : null,
+    isSubstack: true,
+  };
+}
+
+export function parseHashnodeHtml(html: string, url: string): LinkPreview | null {
+  const og = parseOpenGraph(html, url);
+  if (!og.title && !html.includes("hashnode")) return null;
+  const author =
+    html.match(/"author"\s*:\s*\{[\s\S]*?"name"\s*:\s*"([^"]+)"/i)?.[1] ||
+    html.match(/<meta[^>]+name=["']author["'][^>]+content=["']([^"']+)["']/i)?.[1] ||
+    og.author ||
+    null;
+  const reactions = parseInt(html.match(/"totalReactions"\s*:\s*(\d+)/i)?.[1] || html.match(/"likeCount"\s*:\s*(\d+)/i)?.[1] || "", 10);
+  const comments = parseInt(html.match(/"responseCount"\s*:\s*(\d+)/i)?.[1] || html.match(/"commentCount"\s*:\s*(\d+)/i)?.[1] || "", 10);
+  const tagsMatch = html.match(/"tags"\s*:\s*\[([\s\S]*?)\]/i)?.[1];
+  const tags = tagsMatch
+    ? Array.from(tagsMatch.matchAll(/"name"\s*:\s*"([^"]+)"/gi)).map((m) => m[1]).slice(0, 6)
+    : null;
+  return {
+    ...og,
+    siteName: og.siteName || "Hashnode",
+    author,
+    publishedAt: og.publishedAt || metaTagContent(html, "article:published_time") || null,
+    readingMinutes: minReadOf(html),
+    likeCount: Number.isFinite(reactions) && reactions > 0 ? reactions : null,
+    commentCount: Number.isFinite(comments) && comments > 0 ? comments : null,
+    tags: tags?.length ? tags : null,
+    isHashnode: true,
+  };
+}
+
+export function parseWordPressHtml(html: string, url: string): LinkPreview | null {
+  const og = parseOpenGraph(html, url);
+  if (!og.title) return null;
+  const author =
+    html.match(/<a[^>]+rel=["']author["'][^>]*>([\s\S]*?)<\/a>/i)?.[1] ||
+    metaTagContent(html, "author") ||
+    og.author ||
+    null;
+  const comments = parseInt(html.match(/"comment_count"\s*:\s*"?(\d+)"?/i)?.[1] || "", 10);
+  const publishedAt = og.publishedAt || metaTagContent(html, "article:published_time") || null;
+  return {
+    ...og,
+    siteName: og.siteName || "WordPress",
+    author,
+    publishedAt,
+    readingMinutes: minReadOf(html),
+    commentCount: Number.isFinite(comments) && comments > 0 ? comments : null,
+    tags: tagLinksOf(html) || null,
+    isWordPress: true,
+  };
+}
+
+export function parseDevToHtml(html: string, url: string): LinkPreview | null {
+  const og = parseOpenGraph(html, url);
+  if (!og.title) return null;
+  const author =
+    html.match(/"name"\s*:\s*"([^"]+)",[\s\S]*?"@type"\s*:\s*"Person"/i)?.[1] ||
+    metaTagContent(html, "author") ||
+    og.author ||
+    null;
+  const publishedAt = og.publishedAt || metaTagContent(html, "article:published_time") || null;
+  const tags = Array.from(
+    html.matchAll(/<meta[^>]+property=["']article:tag["'][^>]+content=["']([^"']+)["']/gi),
+  )
+    .map((m) => m[1])
+    .filter(Boolean);
+  return {
+    ...og,
+    siteName: og.siteName || "DEV Community",
+    author,
+    publishedAt,
+    readingMinutes: minReadOf(html),
+    tags: tags.length ? tags.slice(0, 6) : null,
+    isDevTo: true,
+  };
+}
+
+export function parseBloggerHtml(html: string, url: string): LinkPreview | null {
+  const og = parseOpenGraph(html, url);
+  if (!og.title) return null;
+  const author =
+    html.match(/<span[^>]+class=["'][^"']*\bfn\b[^"']*["'][^>]*>([^<]+)</i)?.[1] ||
+    html.match(/<a[^>]+rel=["']author["'][^>]*>([^<]+)</i)?.[1] ||
+    metaTagContent(html, "author") ||
+    og.author ||
+    null;
+  const tagline = metaTagContent(html, "description");
+  const publishedAt = og.publishedAt || metaTagContent(html, "article:published_time") || null;
+  return {
+    ...og,
+    siteName: og.siteName || tagline || "Blogger",
+    author: author ? cleanText(author) : null,
+    publishedAt,
+    readingMinutes: minReadOf(html),
+    tags: tagLinksOf(html) || null,
+    isBlogspot: true,
+  };
 }
 
 /* ---------------- Indeed (JobPosting JSON-LD) ---------------- */
@@ -2317,7 +2883,14 @@ export function isWattpadUrl(url: string): boolean {
 }
 
 export function isPratilipiUrl(url: string): boolean {
-  return hostIs(url, "pratilipi.com");
+  if (hostIs(url, "pratilipi.com")) return true;
+  // Branch.io mobile-share links (pratilipi.app.link/…) — detect pre-redirect
+  try {
+    const host = new URL(url.trim()).hostname.toLowerCase();
+    return host === "pratilipi.app.link";
+  } catch {
+    return false;
+  }
 }
 
 export function isWebtoonUrl(url: string): boolean {
@@ -2337,6 +2910,28 @@ async function brandChain(
 ): Promise<LinkPreview> {
   const preview = await fetchBrandPreview(url, siteName, flags);
   return finish(preview || brandFallback(url, siteName, flags));
+}
+
+/** Direct fetch + platform-specific parser, with a flagged skeleton on failure. */
+async function blogChain(
+  url: string,
+  siteName: string,
+  flags: Partial<LinkPreview>,
+  parse: (html: string, url: string) => LinkPreview | null,
+  finish: (preview: LinkPreview) => LinkPreview,
+): Promise<LinkPreview> {
+  let parsed: LinkPreview | null = null;
+  try {
+    const res = await fetch(url, { headers: { Accept: "text/html,application/xhtml+xml" } });
+    if (res.ok) {
+      const html = await res.text();
+      if (html && html.includes("<")) parsed = parse(html, url);
+    }
+  } catch {
+    parsed = null;
+  }
+  if (parsed) return finish({ ...parsed, ...flags });
+  return finish(brandFallback(url, siteName, flags));
 }
 
 /** 65 → "1:05", 3665 → "1:01:05". */
@@ -2384,6 +2979,58 @@ function proxiedImageUrl(url: string | null): string | null {
   return worker ? `${worker}/image?url=${encodeURIComponent(url)}` : url;
 }
 
+/**
+ * Short URLs (tinyurl, bit.ly, t.co …) often respond with an interstitial
+ * "preview" page instead of an HTTP redirect: the redirect chain lands on the
+ * shortener's own host (e.g. tinyurl.com/preview/…/CODE) and the real
+ * destination is only exposed through `<meta property="og:url">`, the canonical
+ * link, or a meta-refresh. When the page points at a *different* host than the
+ * one we landed on, treat it as an interstitial and return that destination.
+ */
+function interstitialDestination(html: string, landed: string): string | null {
+  const grab = (): string | null => {
+    const patterns = [
+      /<meta[^>]+property=["']og:url["'][^>]+content=["']([^"']+)["']/i,
+      /<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:url["']/i,
+      /<link[^>]+rel=["'][^"']*canonical[^"']*["'][^>]+href=["']([^"']+)["']/i,
+      /<link[^>]+href=["']([^"']+)["'][^>]+rel=["'][^"']*canonical[^"']*["']/i,
+    ];
+    for (const re of patterns) {
+      const m = html.match(re);
+      if (m) return m[1];
+    }
+    const refresh = html.match(
+      /<meta[^>]+http-equiv=["']?refresh["']?[^>]+content=["'][^"']*url\s*=\s*["']?([^"';\s>]+)/i,
+    );
+    return refresh ? refresh[1] : null;
+  };
+
+  const raw = grab();
+  if (!raw) return null;
+  let normalized: string | null = null;
+  try {
+    normalized = normalizeUrl(new URL(raw, landed).toString());
+  } catch {
+    return null;
+  }
+  if (!normalized) return null;
+  let landedHost: string;
+  try {
+    landedHost = new URL(landed).hostname.toLowerCase();
+  } catch {
+    return null;
+  }
+  let destHost: string;
+  try {
+    destHost = new URL(normalized).hostname.toLowerCase();
+  } catch {
+    return null;
+  }
+  // Same-host canonical tags are ordinary page hygiene — only refetch when the
+  // destination is genuinely on another host.
+  return destHost === landedHost ? null : normalized;
+}
+
 async function resolvePage(url: string): Promise<ResolvedPage | null> {
   const worker = getWorkerBaseUrl();
   if (worker) {
@@ -2400,15 +3047,95 @@ async function resolvePage(url: string): Promise<ResolvedPage | null> {
       // Fall back to a direct fetch on native or CORS-permissive sites.
     }
   }
-  try {
-    const response = await fetch(url, { headers: { Accept: "text/html,application/xhtml+xml" } });
-    if (!response.ok) return null;
+
+  // Follow HTTP redirects, and when a shortener answers with an interstitial
+  // page instead, follow the canonical destination it points at (bounded loop
+  // against bounce chains and self-referential canonical links).
+  const seen = new Set<string>();
+  let current = url;
+  let lastDest: string | null = null;
+  for (let hop = 0; hop < 4; hop++) {
+    const key = normalizeUrl(current) || current;
+    if (seen.has(key)) break;
+    seen.add(key);
+
+    let response: Response;
+    try {
+      response = await fetch(current, { headers: { Accept: "text/html,application/xhtml+xml" } });
+    } catch {
+      return lastDest ? { url: lastDest, html: "" } : null;
+    }
+    if (!response.ok) return lastDest ? { url: lastDest, html: "" } : null;
+
     const html = await response.text();
-    if (!html.includes("<")) return null;
-    return { url: normalizeUrl(response.url) || url, html };
-  } catch {
-    return null;
+    if (!html.includes("<")) return lastDest ? { url: lastDest, html: "" } : null;
+
+    const landed = normalizeUrl(response.url) || current;
+    const dest = interstitialDestination(html, landed);
+    if (dest && !seen.has(normalizeUrl(dest) || dest)) {
+      lastDest = dest;
+      current = dest;
+      continue;
+    }
+    return { url: landed, html };
   }
+  return lastDest ? { url: lastDest, html: "" } : null;
+}
+
+/** Last-resort redirect resolution, used only when we cannot read the page
+ *  body (cross-origin CORS on the web build, bot walls, flaky hosts). Returns
+ *  the post-redirect URL so that platform detection still runs against the
+ *  link the redirect actually lands on — for every platform, not just this
+ *  one. A cheap HEAD chase handles native; a server-side expander covers web. */
+async function resolveRedirectOnly(url: string): Promise<string | null> {
+  const seen = new Set<string>();
+  let current = url;
+  let moved = false;
+
+  // Chase redirects with HEAD requests (no body read — works even when the
+  // page content itself is blocked). Exhausts the chain via Location headers.
+  for (let hop = 0; hop < 4; hop++) {
+    const key = normalizeUrl(current) || current;
+    if (seen.has(key)) break;
+    seen.add(key);
+
+    let response: Response;
+    try {
+      response = await fetch(current, { method: "HEAD", redirect: "manual" });
+    } catch {
+      break;
+    }
+    const location = response.headers.get("location");
+    if (location) {
+      const next = normalizeUrl(new URL(location, current).toString());
+      if (next && next !== key && !seen.has(next)) {
+        moved = true;
+        current = next;
+        continue;
+      }
+    }
+    if (response.ok && moved) {
+      const finalUrl = normalizeUrl(response.url) || current;
+      return finalUrl;
+    }
+    break;
+  }
+
+  try {
+    const response = await fetch(`https://unshorten.me/json/${encodeURIComponent(url)}`);
+    if (response.ok) {
+      const payload = (await response.json()) as {
+        success?: boolean;
+        resolved_url?: string;
+      };
+      const dest = normalizeUrl(payload.resolved_url || "");
+      const key = normalizeUrl(url) || url;
+      if (payload.success && dest && dest !== key) return dest;
+    }
+  } catch {
+    // fall through — detection falls back to the original URL
+  }
+  return null;
 }
 
 function withProxiedAssets(preview: LinkPreview): LinkPreview {
@@ -2435,11 +3162,27 @@ export async function fetchLinkPreview(input: string): Promise<LinkPreview> {
     throw new Error('Please enter a valid URL');
   }
   const resolvedPage = await resolvePage(normalized);
-  const url = resolvedPage?.url || normalized;
+  let url = resolvedPage?.url || normalized;
+  if (!resolvedPage) {
+    // Couldn't read the page body (CORS/bot wall) — still resolve and detect
+    // against the post-redirect URL so every platform template matches.
+    const finalUrl = await resolveRedirectOnly(normalized);
+    if (finalUrl) url = finalUrl;
+  }
 
   const finish = (preview: LinkPreview) => withProxiedAssets(preview);
 
+  if (isXArticleUrl(url)) {
+    const xa = await fetchXArticlePreview(url);
+    if (xa) return finish(xa);
+    return finish(brandFallback(url, "X", { isTweet: true, isXArticle: true }));
+  }
+
   if (isTweetUrl(url)) {
+    // The page HTML was already fetched by resolvePage — sniff it for an article.
+    if (resolvedPage?.html && detectXArticle(resolvedPage.html)) {
+      return finish(buildXArticlePreview(url, resolvedPage.html, parseOpenGraph(resolvedPage.html, url)));
+    }
     const tweet = await fetchTweetPreview(url);
     if (tweet) return finish(tweet);
     // oEmbed unreachable — still flag as tweet so the UI auto-switches
@@ -2478,6 +3221,22 @@ export async function fetchLinkPreview(input: string): Promise<LinkPreview> {
   if (isWebtoonUrl(url)) return brandChain(url, "Webtoon", { isWebtoon: true }, finish);
   if (isMediumUrl(url)) return brandChain(url, "Medium", { isMedium: true }, finish);
 
+  if (isSubstackUrl(url)) {
+    return blogChain(url, "Substack", { isSubstack: true }, parseSubstackHtml, finish);
+  }
+  if (isDevToUrl(url)) {
+    return blogChain(url, "DEV Community", { isDevTo: true }, parseDevToHtml, finish);
+  }
+  if (isHashnodeUrl(url)) {
+    return blogChain(url, "Hashnode", { isHashnode: true }, parseHashnodeHtml, finish);
+  }
+  if (isBlogspotUrl(url)) {
+    return blogChain(url, "Blogger", { isBlogspot: true }, parseBloggerHtml, finish);
+  }
+  if (isWordPressUrl(url)) {
+    return blogChain(url, "WordPress", { isWordPress: true }, parseWordPressHtml, finish);
+  }
+
   if (isTikTokUrl(url)) {
     const tt = await fetchTikTokPreview(url);
     if (tt) return finish(tt);
@@ -2514,7 +3273,11 @@ export async function fetchLinkPreview(input: string): Promise<LinkPreview> {
     const li = await fetchLinkedInPreview(url);
     if (li) return finish(li);
     // Without a readable source the template still auto-selects.
-    return finish(linkedInFallback(url));
+    return finish(
+      isLinkedInArticleUrl(url)
+        ? { ...linkedInFallback(url), isLinkedInArticle: true }
+        : linkedInFallback(url),
+    );
   }
 
   if (isIndeedUrl(url)) {
@@ -2581,6 +3344,13 @@ export async function fetchLinkPreview(input: string): Promise<LinkPreview> {
   if (isEbayUrl(url)) {
     const eb = await fetchEbayPreview(url);
     if (eb) return finish(eb);
+    // fall through to the generic chain; withCommerce() still flags it
+  }
+
+  if (isEtsyUrl(url) || isWalmartUrl(url)) {
+    const store = isEtsyUrl(url) ? "etsy" : "walmart";
+    const bespoke = await fetchBespokeCommercePreview(url, store);
+    if (bespoke) return finish(bespoke);
     // fall through to the generic chain; withCommerce() still flags it
   }
 

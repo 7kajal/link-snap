@@ -1,0 +1,6 @@
+[    1855ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:8081/:0
+[    2010ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://localhost:8081/.expo/static-tmp/_error.bundle?platform=web&dev=true&hot=false&transform.engine=hermes&transform.routerRoot=src%2Fapp&unstable_transformProfile=hermes-stable:26243
+[    2026ms] [LOG] Running application "main" with appParams:
+ {rootTag: #shadow-root} 
+Development-level warnings: ON.
+Performance optimizations: OFF. @ http://localhost:8081/.expo/static-tmp/_error.bundle?platform=web&dev=true&hot=false&transform.engine=hermes&transform.routerRoot=src%2Fapp&unstable_transformProfile=hermes-stable:42288

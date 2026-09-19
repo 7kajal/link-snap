@@ -18,8 +18,8 @@
     "android": {
       "package": "com.kajalyadav.linksnap",
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/adaptive-icon.png",
-        "backgroundColor": "#202030"
+        "foregroundImage": "./assets/images/android-icon-foreground.png",
+        "backgroundColor": "#101020"
       },
       "predictiveBackGestureEnabled": false,
       "permissions": [
@@ -41,8 +41,8 @@
         {
           "image": "./assets/images/splash.png",
           "resizeMode": "contain",
-          "backgroundColor": "#202030",
-          "imageWidth": 449
+          "backgroundColor": "#101020",
+          "imageWidth": 642
         }
       ],
       [
@@ -52,7 +52,15 @@
           "microphonePermission": false
         }
       ],
-      "expo-sharing",
+      [
+        "expo-sharing",
+        {
+          "android": {
+            "enabled": true,
+            "singleShareMimeTypes": ["text/plain"]
+          }
+        }
+      ],
       [
         "expo-media-library",
         {

@@ -42,6 +42,7 @@ import {
 import Svg, { Defs, RadialGradient, Rect, Stop } from "react-native-svg";
 import { domainFromUrl, getPalette, type Palette } from "@/lib/palette";
 import { SCENE_SCALE } from "@/lib/pixel-sampler";
+import { useImageSize } from "@/lib/use-image-size";
 import {
   commerceStoreFromUrl,
   formatCompact,
@@ -55,7 +56,7 @@ import {
   type YouTubeKind,
 } from "@/lib/link-preview";
 
-export type CardTheme = "tweet" | "youtube" | "clip" | "post" | "music" | "repo" | "commerce" | "stream" | "linkedin" | "indeed" | "zomato" | "swiggy" | "pinterest" | "app" | "stay" | "game" | "book" | "launch" | "ytmusic" | "jiosaavn" | "gaana" | "applemusic" | "netflix" | "primevideo" | "hotstar" | "kukufm" | "applepodcasts" | "pocketfm" | "kindle" | "wattpad" | "pratilipi" | "webtoon" | "medium" | "amazon" | "meesho" | "flipkart";
+export type CardTheme = "tweet" | "youtube" | "clip" | "post" | "music" | "repo" | "commerce" | "stream" | "linkedin" | "indeed" | "zomato" | "swiggy" | "pinterest" | "app" | "stay" | "game" | "book" | "launch" | "ytmusic" | "jiosaavn" | "gaana" | "applemusic" | "netflix" | "primevideo" | "hotstar" | "kukufm" | "applepodcasts" | "pocketfm" | "kindle" | "wattpad" | "pratilipi" | "webtoon" | "medium" | "amazon" | "meesho" | "flipkart" | "blogspot" | "devto" | "xarticle" | "linkedarticle" | "substack" | "wordpress" | "hashnode" | "ebay" | "etsy" | "aliexpress" | "walmart" | "linksnap";
 export type AspectRatio = "story" | "square";
 export type CardBackgroundMode = "image" | "color";
 export type CardColorScheme = "light" | "dark";
@@ -142,6 +143,8 @@ export type LinkCardViewProps = ViewProps & {
   readMinutes?: string;
   dateText?: string;
   location?: string;
+  /** Site favicon (from parsed metadata) shown in the generic card footer. */
+  favicon?: string | null;
   /** Tweet/X extras (auto from oEmbed when available, else manual). */
   handle?: string;
   verified?: boolean;
@@ -165,6 +168,11 @@ export type LinkCardViewProps = ViewProps & {
   mrp?: string;
   rating?: string;
   seller?: string;
+  /** Marketplace extras (eBay/Etsy/Walmart) — manual-first, parsed meta as fallback. */
+  condition?: string;
+  sold?: string;
+  sellerFeedback?: string;
+  feedbackPercent?: number | null;
   /** LinkedIn post extras. */
   headline?: string;
   reposts?: string;
@@ -238,6 +246,18 @@ const CARD_META: Record<CardTheme, { surface: string; radius: number; border: st
   amazon: { surface: "#FFFFFF", radius: 18, border: "rgba(0, 0, 0, 0.08)" },
   meesho: { surface: "#FFFFFF", radius: 18, border: "rgba(0, 0, 0, 0.08)" },
   flipkart: { surface: "#FFFFFF", radius: 18, border: "rgba(0, 0, 0, 0.08)" },
+  blogspot: { surface: "#FFFFFF", radius: 20, border: "rgba(0, 0, 0, 0.08)" },
+  devto: { surface: "#FAFAFA", radius: 20, border: "rgba(0, 0, 0, 0.08)" },
+  xarticle: { surface: "#FFFFFF", radius: 20, border: "rgba(0, 0, 0, 0.08)" },
+  linkedarticle: { surface: "#FFFFFF", radius: 18, border: "rgba(0, 0, 0, 0.08)" },
+  substack: { surface: "#FFFFFF", radius: 20, border: "rgba(0, 0, 0, 0.08)" },
+  wordpress: { surface: "#FFFFFF", radius: 20, border: "rgba(0, 0, 0, 0.08)" },
+  hashnode: { surface: "#FFFFFF", radius: 20, border: "rgba(0, 0, 0, 0.08)" },
+  ebay: { surface: "#FFFFFF", radius: 18, border: "rgba(0, 0, 0, 0.08)" },
+  etsy: { surface: "#FFFFFF", radius: 18, border: "rgba(0, 0, 0, 0.08)" },
+  aliexpress: { surface: "#FFFFFF", radius: 18, border: "rgba(0, 0, 0, 0.08)" },
+  walmart: { surface: "#FFFFFF", radius: 18, border: "rgba(0, 0, 0, 0.08)" },
+  linksnap: { surface: "#FFFFFF", radius: 20, border: "rgba(0, 0, 0, 0.08)" },
 };
 
 /**
@@ -542,6 +562,19 @@ const STORE_DESIGN: Record<CommerceStore, StoreDesign> = {
     ratingCountColor: "#757575",
     sellerPrefix: "Seller:",
   },
+  walmart: {
+    label: "Walmart",
+    color: "#0071DC",
+    wordmarkStyle: { fontWeight: "800", letterSpacing: -0.3 },
+    priceColor: "#2E2F32",
+    dealBackground: "#E6F1FB",
+    dealColor: "#0071DC",
+    ratingStyle: "stars",
+    ratingColor: "#FFC220",
+    ratingTextColor: "#2E2F32",
+    ratingCountColor: "#74767C",
+    sellerPrefix: "Sold by",
+  },
   other: {
     label: "Shop",
     color: "#111111",
@@ -613,6 +646,7 @@ const LinkCardView = forwardRef<View, LinkCardViewProps>(function LinkCardView(
     readMinutes,
     dateText,
     location,
+    favicon,
     handle,
     verified,
     likes,
@@ -631,6 +665,10 @@ const LinkCardView = forwardRef<View, LinkCardViewProps>(function LinkCardView(
     mrp,
     rating,
     seller,
+    condition,
+    sold,
+    sellerFeedback,
+    feedbackPercent,
     headline,
     reposts,
     salary,
@@ -666,6 +704,11 @@ const LinkCardView = forwardRef<View, LinkCardViewProps>(function LinkCardView(
   const palette = getPalette(domainFromUrl(url));
   const authorName = cleanAuthor(author || preview?.author, publisher);
   const minutes = readMinutesOf(readMinutes, preview || null);
+  // A generic link isn't necessarily an article — only show "N min read" when a
+  // real reading time exists (parsed from the page or entered manually).
+  const manualRead = readMinutes ? parseInt(readMinutes.replace(/\D/g, ""), 10) : NaN;
+  const hasReadTime =
+    !hideReadTime && ((preview?.readingMinutes ?? 0) > 0 || (Number.isFinite(manualRead) && manualRead > 0));
   const dateLabel = (dateText || "").trim() || formatDateLabel(preview?.publishedAt || null);
   const pill = (location || "").trim() || preview?.siteName?.trim() || domainFromUrl(url);
 
@@ -737,6 +780,23 @@ const LinkCardView = forwardRef<View, LinkCardViewProps>(function LinkCardView(
   // Launch resolution
   const lcTagline = (tagline || "").trim() || preview?.description?.trim() || null;
   const lcUpvotes = countOf(upvotes, preview?.upvotes);
+
+  // Blog / article resolution
+  const blogSite = preview?.siteName?.trim() || publisher;
+  const blogTags = preview?.tags || null;
+  const xaViews = resolveCount(views, preview?.viewCount);
+  const laLikes = countOf(likes, preview?.likeCount);
+  const laComments = countOf(replies, preview?.commentCount ?? preview?.replyCount);
+
+  // Commerce extras (eBay/Etsy/Walmart) — manual override wins, parsed meta as fallback
+  const cCondition = (condition || "").trim() || preview?.commerceCondition || null;
+  const cSold = (sold || "").trim() || preview?.commerceSold || null;
+  const cFeedbackRaw = feedbackPercent ?? preview?.sellerFeedbackPercent ?? null;
+  const cFeedbackPercent =
+    typeof cFeedbackRaw === "number"
+      ? cFeedbackRaw
+      : parseFloat(String(cFeedbackRaw).replace(/[^\d.]/g, "")) || null;
+  const cSellerFeedback = (sellerFeedback || "").trim() || preview?.commerceSellerFeedback || null;
 
   // Twitch resolution (Worker Helix first, manual override wins)
   const stKind: TwitchKind =
@@ -882,7 +942,15 @@ const LinkCardView = forwardRef<View, LinkCardViewProps>(function LinkCardView(
         />
       );
     }
-    if (theme === "amazon" || theme === "meesho" || theme === "flipkart") {
+    if (
+      theme === "amazon" ||
+      theme === "meesho" ||
+      theme === "flipkart" ||
+      theme === "ebay" ||
+      theme === "etsy" ||
+      theme === "aliexpress" ||
+      theme === "walmart"
+    ) {
       return (
         <CommerceCard
           store={theme}
@@ -893,6 +961,10 @@ const LinkCardView = forwardRef<View, LinkCardViewProps>(function LinkCardView(
           rating={cRating}
           reviews={cReviews}
           seller={cSeller}
+          condition={cCondition}
+          sold={cSold}
+          sellerFeedback={cSellerFeedback}
+          feedbackPercent={cFeedbackPercent}
         />
       );
     }
@@ -907,6 +979,121 @@ const LinkCardView = forwardRef<View, LinkCardViewProps>(function LinkCardView(
           rating={cRating}
           reviews={cReviews}
           seller={cSeller}
+          condition={cCondition}
+          sold={cSold}
+          sellerFeedback={cSellerFeedback}
+          feedbackPercent={cFeedbackPercent}
+        />
+      );
+    }
+    if (theme === "blogspot") {
+      return (
+        <BlogspotCard
+          title={title}
+          blog={blogSite}
+          authorName={authorName}
+          excerpt={excerpt}
+          image={previewImage}
+          dateLabel={dateLabel}
+          minutes={minutes}
+          tags={blogTags}
+          hideReadTime={hideReadTime}
+        />
+      );
+    }
+    if (theme === "devto") {
+      return (
+        <DevToCard
+          title={title}
+          authorName={authorName}
+          excerpt={excerpt}
+          image={previewImage}
+          dateLabel={dateLabel}
+          minutes={minutes}
+          tags={blogTags}
+          hideReadTime={hideReadTime}
+        />
+      );
+    }
+    if (theme === "xarticle") {
+      return (
+        <XArticleCard
+          headline={title}
+          excerpt={excerpt}
+          authorName={authorName}
+          handle={tweetHandle}
+          verified={tweetVerified}
+          avatar={avatar}
+          image={previewImage}
+          dateLabel={dateLabel}
+          views={xaViews}
+          hideCounts={hideCounts}
+        />
+      );
+    }
+    if (theme === "linkedarticle") {
+      return (
+        <LinkedArticleCard
+          headline={title}
+          authorName={authorName}
+          avatar={avatar}
+          image={previewImage}
+          dateLabel={dateLabel}
+          likes={laLikes}
+          comments={laComments}
+          minutes={minutes}
+          hideCounts={hideCounts}
+          hideReadTime={hideReadTime}
+        />
+      );
+    }
+    if (theme === "substack") {
+      return (
+        <SubstackCard
+          title={title}
+          publication={blogSite}
+          authorName={authorName}
+          subtitle={excerpt}
+          image={previewImage}
+          dateLabel={dateLabel}
+          likes={likeCount}
+          comments={laComments}
+          minutes={minutes}
+          hideCounts={hideCounts}
+          hideReadTime={hideReadTime}
+        />
+      );
+    }
+    if (theme === "wordpress") {
+      return (
+        <WordPressCard
+          title={title}
+          site={blogSite}
+          authorName={authorName}
+          excerpt={excerpt}
+          image={previewImage}
+          dateLabel={dateLabel}
+          minutes={minutes}
+          tags={blogTags}
+          hideReadTime={hideReadTime}
+        />
+      );
+    }
+    if (theme === "hashnode") {
+      return (
+        <HashnodeCard
+          title={title}
+          publication={blogSite}
+          authorName={authorName}
+          excerpt={excerpt}
+          image={previewImage}
+          dateLabel={dateLabel}
+          likes={laLikes}
+          comments={laComments}
+          minutes={minutes}
+          tags={blogTags}
+          hideCounts={hideCounts}
+          hideReadTime={hideReadTime}
         />
       );
     }
@@ -1157,6 +1344,21 @@ const LinkCardView = forwardRef<View, LinkCardViewProps>(function LinkCardView(
           dateLabel={dateLabel}
           image={previewImage}
           hideReadTime={hideReadTime}
+        />
+      );
+    }
+    if (theme === "linksnap") {
+      return (
+        <DynamicCard
+          isStory={isStory}
+          cardWidth={width}
+          title={title}
+          excerpt={excerpt}
+          authorName={authorName}
+          minutes={minutes}
+          showReadTime={hasReadTime}
+          image={previewImage}
+          favicon={favicon ?? preview?.favicon ?? null}
         />
       );
     }
@@ -1610,6 +1812,10 @@ function CommerceCard({
   rating,
   reviews,
   seller,
+  condition,
+  sold,
+  sellerFeedback,
+  feedbackPercent,
 }: {
   store: CommerceStore;
   title: string;
@@ -1619,6 +1825,10 @@ function CommerceCard({
   rating: number | null;
   reviews: number | null;
   seller: string | null;
+  condition?: string | null;
+  sold?: string | null;
+  sellerFeedback?: string | null;
+  feedbackPercent?: number | null;
 }) {
   const colors = useCardColors();
   const meta = STORE_DESIGN[store];
@@ -1637,6 +1847,13 @@ function CommerceCard({
       <View style={[styles.comStore, { backgroundColor: meta.color }]}>
         <Text style={[styles.comStoreText, meta.wordmarkStyle]}>{meta.label}</Text>
       </View>
+      {condition ? (
+        <View style={[styles.comCondition, { backgroundColor: meta.dealBackground }]}>
+          <Text style={[styles.comConditionText, { color: meta.dealColor }]} numberOfLines={1}>
+            {condition}
+          </Text>
+        </View>
+      ) : null}
       <Text style={[styles.comTitle, { color: colors.primary }]} numberOfLines={2}>
         {title}
       </Text>
@@ -1700,13 +1917,28 @@ function CommerceCard({
                 </Text>
               ) : null}
             </Text>
+            {feedbackPercent != null ? (
+              <Text style={[styles.comRatingText, { color: colors.muted }]}>
+                {` · ${feedbackPercent}% positive`}
+              </Text>
+            ) : null}
           </View>
         )
       ) : null}
-      {seller ? (
-        <Text style={[styles.comSeller, { color: colors.muted }]} numberOfLines={1}>
-          {meta.sellerPrefix} {seller}
-        </Text>
+      {seller || sold ? (
+        <View style={styles.comSellerRow}>
+          {seller ? (
+            <Text style={[styles.comSeller, { color: colors.muted }]} numberOfLines={1}>
+              {meta.sellerPrefix} {seller}
+              {sellerFeedback ? ` ${sellerFeedback}` : ""}
+            </Text>
+          ) : null}
+          {sold ? (
+            <Text style={[styles.comSold, { color: colors.muted }]} numberOfLines={1}>
+              {sold}
+            </Text>
+          ) : null}
+        </View>
       ) : null}
     </View>
   );
@@ -3057,8 +3289,635 @@ function MediumCard({
   );
 }
 
-/* ---------------- Template D: YouTube video/shorts/live/premiere ---------------- */
+/* ---------------- Generic / default article card ---------------- */
 
+/**
+ * Adaptive default card for generic (non-platform) links.
+ *
+ * - Any measurable image: laid out top-down as a full-width hero, preserving
+ *   its shape. Portrait images get more height than landscape images.
+ * - No image or an image that cannot be measured: compact text-first layout.
+ */
+function DynamicCard({
+  isStory,
+  cardWidth,
+  title,
+  excerpt,
+  authorName,
+  minutes,
+  showReadTime,
+  image,
+  favicon,
+}: {
+  isStory: boolean;
+  cardWidth: number;
+  title: string;
+  excerpt: string;
+  authorName: string;
+  minutes: number;
+  showReadTime: boolean;
+  image: string | null;
+  favicon: string | null;
+}) {
+  const colors = useCardColors();
+  const size = useImageSize(image);
+  const hasSize = size.loaded && size.width > 0 && size.height > 0;
+
+  const footer = (
+    <View style={styles.dynFooter}>
+      {favicon ? (
+        <Image source={{ uri: favicon }} style={styles.dynAvatar} resizeMode="cover" />
+      ) : (
+        <View style={[styles.dynAvatar, { backgroundColor: colors.subtle }]}>
+          <Text style={[styles.dynAvatarText, { color: colors.secondary }]}>{getInitials(authorName)}</Text>
+        </View>
+      )}
+      <Text style={[styles.dynAuthor, { color: colors.primary }]} numberOfLines={1}>
+        {authorName || "Link"}
+      </Text>
+      {showReadTime ? (
+        <Text style={[styles.dynReadTime, { color: colors.muted }]} numberOfLines={1}>
+          {`${minutes} min read`}
+        </Text>
+      ) : null}
+    </View>
+  );
+
+  if (image && hasSize) {
+    const heroRatio = size.width / size.height;
+    // Actual usable card width: shell width − borders − 20px padding each side.
+    const contentWidth = Math.max(120, cardWidth * CARD_W_RATIO - 42);
+    // Keep enough room for metadata while allowing portrait assets to grow.
+    const heroMax = Math.max(160, contentWidth * (heroRatio < 1 ? 1.05 : 0.72));
+    const heroHeight = Math.min(contentWidth / heroRatio, heroMax);
+
+    return (
+      <View style={styles.dyn}>
+        <View style={[styles.dynHeroWrap, { height: heroHeight }]}>
+          <Image source={{ uri: image }} style={styles.dynHero} resizeMode="contain" />
+        </View>
+        <Text style={[styles.dynTitle, styles.dynTitleBelowHero, { color: colors.primary }]} numberOfLines={2}>
+          {title}
+        </Text>
+        {excerpt ? (
+          <Text style={[styles.dynExcerpt, styles.dynExcerptBelowHero, { color: colors.secondary }]} numberOfLines={2}>
+            {excerpt}
+          </Text>
+        ) : null}
+        {footer}
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.dyn}>
+      <Text style={[styles.dynTitle, { color: colors.primary }]} numberOfLines={isStory ? 3 : 2}>
+        {title}
+      </Text>
+      {excerpt ? (
+        <Text style={[styles.dynExcerpt, { color: colors.secondary }]} numberOfLines={isStory ? 2 : 3}>
+          {excerpt}
+        </Text>
+      ) : null}
+      {image ? (
+        <View style={styles.dynThumbWrap}>
+          <Image source={{ uri: image }} style={styles.dynThumb} resizeMode="cover" />
+        </View>
+      ) : null}
+      {footer}
+    </View>
+  );
+}
+
+/* ---------------- Blog / long-form article cards ---------------- */
+
+function BlogByline({
+  authorName,
+  avatar,
+  meta,
+}: {
+  authorName: string;
+  avatar?: string | null;
+  meta: string;
+}) {
+  const colors = useCardColors();
+  return (
+    <View style={styles.blogByline}>
+      {avatar ? (
+        <Image source={{ uri: avatar }} style={styles.blogAvatar} resizeMode="cover" />
+      ) : (
+        <View style={[styles.blogAvatar, styles.blogAvatarFallback, { backgroundColor: colors.subtle }]}>
+          <Text style={[styles.blogAvatarText, { color: colors.secondary }]}>{getInitials(authorName)}</Text>
+        </View>
+      )}
+      <Text style={[styles.blogAuthor, { color: colors.primary }]} numberOfLines={1}>
+        {authorName}
+      </Text>
+      {meta ? (
+        <Text style={[styles.blogMeta, { color: colors.muted }]} numberOfLines={1}>
+          · {meta}
+        </Text>
+      ) : null}
+    </View>
+  );
+}
+
+function BlogTagRow({ tags }: { tags: string[] | null }) {
+  const colors = useCardColors();
+  if (!tags?.length) return null;
+  return (
+    <View style={styles.blogTagsRow}>
+      {tags.slice(0, 4).map((tag) => (
+        <View key={tag} style={[styles.blogTag, { backgroundColor: colors.subtle }]}>
+          <Text style={[styles.blogTagText, { color: colors.secondary }]} numberOfLines={1}>
+            {tag}
+          </Text>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+function BlogspotCard({
+  title,
+  blog,
+  authorName,
+  excerpt,
+  image,
+  dateLabel,
+  minutes,
+  tags,
+  hideReadTime,
+}: {
+  title: string;
+  blog: string;
+  authorName: string;
+  excerpt: string;
+  image: string | null;
+  dateLabel: string;
+  minutes: number;
+  tags: string[] | null;
+  hideReadTime?: boolean;
+}) {
+  const colors = useCardColors();
+  const meta = [
+    dateLabel,
+    hideReadTime ? "" : `${minutes} min read`,
+  ].filter(Boolean).join(" · ");
+  return (
+    <View style={[styles.blog, { backgroundColor: colors.surface }]}>
+      <View style={styles.blogBrandRow}>
+        <View style={[styles.blogBrandMark, { backgroundColor: "#F57C00" }]}>
+          <Text style={styles.blogBrandMarkText}>B</Text>
+        </View>
+        <Text style={[styles.blogBrand, { color: "#F57C00" }]} numberOfLines={1}>
+          {blog}
+        </Text>
+      </View>
+      {image ? (
+        <View style={styles.blogHeroWrap}>
+          <CardMedia uri={image} style={styles.blogHero} />
+        </View>
+      ) : null}
+      <Text style={[styles.blogTitle, styles.blogTitleSerif, { color: colors.primary }]} numberOfLines={2}>
+        {title}
+      </Text>
+      {excerpt ? (
+        <Text style={[styles.blogSubtitle, { color: colors.secondary }]} numberOfLines={2}>
+          {excerpt}
+        </Text>
+      ) : null}
+      <BlogByline authorName={authorName} meta={meta} />
+      <BlogTagRow tags={tags} />
+    </View>
+  );
+}
+
+function DevToCard({
+  title,
+  authorName,
+  excerpt,
+  image,
+  dateLabel,
+  minutes,
+  tags,
+  hideReadTime,
+}: {
+  title: string;
+  authorName: string;
+  excerpt: string;
+  image: string | null;
+  dateLabel: string;
+  minutes: number;
+  tags: string[] | null;
+  hideReadTime?: boolean;
+}) {
+  const colors = useCardColors();
+  return (
+    <View style={[styles.blog, { backgroundColor: colors.surface }]}>
+      <View style={styles.blogBrandRow}>
+        <View style={[styles.blogBrandMark, { backgroundColor: "#0A0A0A", width: 34, borderRadius: 4 }]}>
+          <Text style={[styles.blogBrandMarkText, { fontSize: 11, letterSpacing: 0.5 }]}>DEV</Text>
+        </View>
+        <Text style={[styles.blogBrand, { color: colors.muted }]} numberOfLines={1}>
+          DEV Community
+        </Text>
+      </View>
+      <Text style={[styles.blogTitle, { color: colors.primary }]} numberOfLines={3}>
+        {title}
+      </Text>
+      {image ? (
+        <View style={styles.blogHeroWrap}>
+          <CardMedia uri={image} style={styles.blogHero} />
+        </View>
+      ) : null}
+      {excerpt ? (
+        <Text style={[styles.blogSubtitle, { color: colors.secondary }]} numberOfLines={2}>
+          {excerpt}
+        </Text>
+      ) : null}
+      <BlogByline
+        authorName={authorName}
+        meta={[dateLabel, hideReadTime ? "" : `${minutes} min read`].filter(Boolean).join(" · ")}
+      />
+      <View style={styles.blogTagsRow}>
+        {(tags || []).slice(0, 4).map((tag) => (
+          <View key={tag} style={[styles.blogTag, { backgroundColor: colors.subtle }]}>
+            <Text style={[styles.blogTagText, { color: "#3B49DF" }]} numberOfLines={1}>
+              #{tag}
+            </Text>
+          </View>
+        ))}
+      </View>
+    </View>
+  );
+}
+
+function XArticleCard({
+  headline,
+  excerpt,
+  authorName,
+  handle,
+  verified,
+  avatar,
+  image,
+  dateLabel,
+  views,
+  hideCounts,
+}: {
+  headline: string;
+  excerpt: string;
+  authorName: string;
+  handle: string | null;
+  verified: boolean;
+  avatar: string | null;
+  image: string | null;
+  dateLabel: string;
+  views: number | null;
+  hideCounts: boolean;
+}) {
+  const colors = useCardColors();
+  const body = excerpt && excerpt !== headline ? excerpt : "";
+  return (
+    <View style={[styles.blog, { backgroundColor: colors.surface }]}>
+      {image ? (
+        <View style={styles.xaHeroWrap}>
+          <CardMedia uri={image} style={styles.xaHero} />
+          <View style={styles.xaBadge}>
+            <Text style={styles.xaBadgeText}>Article</Text>
+          </View>
+        </View>
+      ) : (
+        <View style={styles.xaBadgeStandalone}>
+          <Text style={styles.xaBadgeText}>Article</Text>
+        </View>
+      )}
+      <Text style={[styles.xaHeadline, { color: colors.primary }]} numberOfLines={3}>
+        {headline}
+      </Text>
+      {body ? (
+        <Text style={[styles.blogSubtitle, { color: colors.secondary }]} numberOfLines={2}>
+          {body}
+        </Text>
+      ) : null}
+      <View style={styles.blogByline}>
+        {avatar ? (
+          <Image source={{ uri: avatar }} style={styles.blogAvatar} resizeMode="cover" />
+        ) : (
+          <View style={[styles.blogAvatar, styles.blogAvatarFallback, { backgroundColor: colors.subtle }]}>
+            <Text style={[styles.blogAvatarText, { color: colors.secondary }]}>{getInitials(authorName)}</Text>
+          </View>
+        )}
+        <Text style={[styles.blogAuthor, { color: colors.primary }]} numberOfLines={1}>
+          {authorName}
+        </Text>
+        {verified ? <Check size={13} color="#1D9BF0" strokeWidth={3} /> : null}
+        {handle ? (
+          <Text style={[styles.blogMeta, { color: colors.muted }]} numberOfLines={1}>
+            @{handle}
+          </Text>
+        ) : null}
+      </View>
+      <View style={styles.blogFooterRow}>
+        {!hideCounts && views != null ? (
+          <View style={styles.blogStat}>
+            <Eye size={13} color={colors.muted} strokeWidth={2} />
+            <Text style={[styles.blogStatText, { color: colors.muted }]}>{formatCompact(views)}</Text>
+          </View>
+        ) : null}
+        {dateLabel ? (
+          <Text style={[styles.blogStatText, { color: colors.muted }]} numberOfLines={1}>
+            {dateLabel}
+          </Text>
+        ) : null}
+      </View>
+    </View>
+  );
+}
+
+function LinkedArticleCard({
+  headline,
+  authorName,
+  avatar,
+  image,
+  dateLabel,
+  likes,
+  comments,
+  minutes,
+  hideCounts,
+  hideReadTime,
+}: {
+  headline: string;
+  authorName: string;
+  avatar: string | null;
+  image: string | null;
+  dateLabel: string;
+  likes: number | null;
+  comments: number | null;
+  minutes: number;
+  hideCounts: boolean;
+  hideReadTime?: boolean;
+}) {
+  const colors = useCardColors();
+  return (
+    <View style={[styles.blog, { backgroundColor: colors.surface }]}>
+      <View style={styles.blogBrandRow}>
+        <View style={[styles.liMark]}>
+          <Text style={styles.liMarkText}>in</Text>
+        </View>
+        <Text style={[styles.blogBrand, { color: "#0A66C2" }]}>LinkedIn</Text>
+      </View>
+      <View style={styles.blogByline}>
+        {avatar ? (
+          <Image source={{ uri: avatar }} style={styles.blogAvatar} resizeMode="cover" />
+        ) : (
+          <View style={[styles.blogAvatar, styles.blogAvatarFallback, { backgroundColor: "#0A66C2" }]}>
+            <Text style={[styles.blogAvatarText, { color: "#FFFFFF" }]}>{getInitials(authorName)}</Text>
+          </View>
+        )}
+        <View style={{ flex: 1 }}>
+          <Text style={[styles.blogAuthor, { color: colors.primary }]} numberOfLines={1}>
+            {authorName}
+          </Text>
+          {dateLabel ? (
+            <Text style={[styles.blogMeta, { color: colors.muted }]} numberOfLines={1}>
+              {dateLabel}
+            </Text>
+          ) : null}
+        </View>
+      </View>
+      <Text style={[styles.laKicker]}>Article</Text>
+      <Text style={[styles.blogTitle, { color: colors.primary }]} numberOfLines={3}>
+        {headline}
+      </Text>
+      {image ? (
+        <View style={styles.blogHeroWrap}>
+          <CardMedia uri={image} style={styles.blogHero} />
+        </View>
+      ) : null}
+      <View style={styles.blogFooterRow}>
+        {!hideCounts && likes != null ? (
+          <View style={styles.blogStat}>
+            <ThumbsUp size={13} color="#0A66C2" strokeWidth={2} />
+            <Text style={[styles.blogStatText, { color: colors.muted }]}>{formatCompact(likes)}</Text>
+          </View>
+        ) : null}
+        {!hideCounts && comments != null ? (
+          <View style={styles.blogStat}>
+            <MessageCircle size={13} color={colors.muted} strokeWidth={2} />
+            <Text style={[styles.blogStatText, { color: colors.muted }]}>{formatCompact(comments)}</Text>
+          </View>
+        ) : null}
+        {!hideReadTime ? (
+          <View style={styles.blogStat}>
+            <Clock size={13} color={colors.muted} strokeWidth={2} />
+            <Text style={[styles.blogStatText, { color: colors.muted }]}>{minutes} min read</Text>
+          </View>
+        ) : null}
+      </View>
+    </View>
+  );
+}
+
+function SubstackCard({
+  title,
+  publication,
+  authorName,
+  subtitle,
+  image,
+  dateLabel,
+  likes,
+  comments,
+  minutes,
+  hideCounts,
+  hideReadTime,
+}: {
+  title: string;
+  publication: string;
+  authorName: string;
+  subtitle: string;
+  image: string | null;
+  dateLabel: string;
+  likes: number | null;
+  comments: number | null;
+  minutes: number;
+  hideCounts: boolean;
+  hideReadTime?: boolean;
+}) {
+  const colors = useCardColors();
+  return (
+    <View style={[styles.blog, { backgroundColor: colors.surface }]}>
+      <View style={styles.blogBrandRow}>
+        <Text style={[styles.substackWordmark]}>Substack</Text>
+        <Text style={[styles.blogBrand, { color: colors.muted }]} numberOfLines={1}>
+          {publication}
+        </Text>
+      </View>
+      {image ? (
+        <View style={styles.blogHeroWrap}>
+          <CardMedia uri={image} style={styles.blogHero} />
+        </View>
+      ) : null}
+      <Text style={[styles.substackTitle, { color: colors.primary }]} numberOfLines={3}>
+        {title}
+      </Text>
+      {subtitle ? (
+        <Text style={[styles.blogSubtitle, { color: colors.secondary }]} numberOfLines={2}>
+          {subtitle}
+        </Text>
+      ) : null}
+      <BlogByline
+        authorName={authorName}
+        meta={[dateLabel, hideReadTime ? "" : `${minutes} min read`].filter(Boolean).join(" · ")}
+      />
+      <View style={styles.blogFooterRow}>
+        <View style={styles.blogStat}>
+          <Heart size={14} color="#FF6719" fill="#FF6719" strokeWidth={0} />
+          <Text style={[styles.blogStatText, { color: colors.muted }]}>
+            {!hideCounts && likes != null ? formatCompact(likes) : "Like"}
+          </Text>
+        </View>
+        {!hideCounts && comments != null ? (
+          <View style={styles.blogStat}>
+            <MessageCircle size={13} color={colors.muted} strokeWidth={2} />
+            <Text style={[styles.blogStatText, { color: colors.muted }]}>{formatCompact(comments)}</Text>
+          </View>
+        ) : null}
+      </View>
+    </View>
+  );
+}
+
+function WordPressCard({
+  title,
+  site,
+  authorName,
+  excerpt,
+  image,
+  dateLabel,
+  minutes,
+  tags,
+  hideReadTime,
+}: {
+  title: string;
+  site: string;
+  authorName: string;
+  excerpt: string;
+  image: string | null;
+  dateLabel: string;
+  minutes: number;
+  tags: string[] | null;
+  hideReadTime?: boolean;
+}) {
+  const colors = useCardColors();
+  return (
+    <View style={[styles.blog, { backgroundColor: colors.surface }]}>
+      <View style={styles.blogBrandRow}>
+        <View style={[styles.blogBrandMark, { backgroundColor: "#21759B", borderRadius: 13 }]}>
+          <Text style={styles.blogBrandMarkText}>W</Text>
+        </View>
+        <Text style={[styles.blogBrand, { color: colors.muted }]} numberOfLines={1}>
+          {site}
+        </Text>
+      </View>
+      {image ? (
+        <View style={styles.blogHeroWrap}>
+          <CardMedia uri={image} style={styles.blogHero} />
+        </View>
+      ) : null}
+      <Text style={[styles.blogTitle, { color: colors.primary }]} numberOfLines={3}>
+        {title}
+      </Text>
+      {excerpt ? (
+        <Text style={[styles.blogSubtitle, { color: colors.secondary }]} numberOfLines={2}>
+          {excerpt}
+        </Text>
+      ) : null}
+      <BlogByline
+        authorName={authorName}
+        meta={[dateLabel, hideReadTime ? "" : `${minutes} min read`].filter(Boolean).join(" · ")}
+      />
+      <BlogTagRow tags={tags} />
+    </View>
+  );
+}
+
+function HashnodeCard({
+  title,
+  publication,
+  authorName,
+  excerpt,
+  image,
+  dateLabel,
+  likes,
+  comments,
+  minutes,
+  tags,
+  hideCounts,
+  hideReadTime,
+}: {
+  title: string;
+  publication: string;
+  authorName: string;
+  excerpt: string;
+  image: string | null;
+  dateLabel: string;
+  likes: number | null;
+  comments: number | null;
+  minutes: number;
+  tags: string[] | null;
+  hideCounts: boolean;
+  hideReadTime?: boolean;
+}) {
+  const colors = useCardColors();
+  return (
+    <View style={[styles.blog, { backgroundColor: colors.surface }]}>
+      <View style={styles.blogBrandRow}>
+        <View style={[styles.blogBrandMark, { backgroundColor: "#2962FF" }]}>
+          <Text style={styles.blogBrandMarkText}>H</Text>
+        </View>
+        <Text style={[styles.blogAuthor, { color: colors.primary }]} numberOfLines={1}>
+          {publication}
+        </Text>
+        <Text style={[styles.blogMeta, { color: colors.muted }]}>· Hashnode</Text>
+      </View>
+      {image ? (
+        <View style={styles.blogHeroWrap}>
+          <CardMedia uri={image} style={styles.blogHero} />
+        </View>
+      ) : null}
+      <Text style={[styles.blogTitle, { color: colors.primary }]} numberOfLines={3}>
+        {title}
+      </Text>
+      {excerpt ? (
+        <Text style={[styles.blogSubtitle, { color: colors.secondary }]} numberOfLines={2}>
+          {excerpt}
+        </Text>
+      ) : null}
+      <BlogByline
+        authorName={authorName}
+        meta={[dateLabel, hideReadTime ? "" : `${minutes} min read`].filter(Boolean).join(" · ")}
+      />
+      <View style={styles.blogFooterRow}>
+        <View style={styles.blogStat}>
+          <ThumbsUp size={13} color="#2962FF" strokeWidth={2} />
+          <Text style={[styles.blogStatText, { color: colors.muted }]}>
+            {!hideCounts && likes != null ? formatCompact(likes) : "React"}
+          </Text>
+        </View>
+        {!hideCounts && comments != null ? (
+          <View style={styles.blogStat}>
+            <MessageCircle size={13} color={colors.muted} strokeWidth={2} />
+            <Text style={[styles.blogStatText, { color: colors.muted }]}>{formatCompact(comments)}</Text>
+          </View>
+        ) : null}
+      </View>
+      <BlogTagRow tags={tags} />
+    </View>
+  );
+}
+
+/* ---------------- Template D: YouTube video/shorts/live/premiere ---------------- */
 function YouTubeCard({
   kind,
   isStory,
@@ -3877,6 +4736,17 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: "800",
   },
+  comCondition: {
+    alignSelf: "flex-start",
+    borderRadius: 6,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    marginTop: 8,
+  },
+  comConditionText: {
+    fontSize: 11,
+    fontWeight: "700",
+  },
   comImageWrap: {
     borderRadius: 12,
     overflow: "hidden",
@@ -3953,7 +4823,20 @@ const styles = StyleSheet.create({
   comSeller: {
     fontSize: 12,
     color: "#888888",
+    marginTop: 0,
+    flexShrink: 1,
+  },
+  comSellerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
     marginTop: 10,
+  },
+  comSold: {
+    fontSize: 12,
+    color: "#888888",
+    flexShrink: 0,
   },
 
   /* twitch embed */
@@ -5956,6 +6839,271 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "400",
     color: "#8A8A8A",
+  },
+
+  /* linksnap / default article embed */
+  dyn: {
+    padding: 20,
+  },
+  dynHeroWrap: {
+    width: "100%",
+    borderRadius: 12,
+    overflow: "hidden",
+    backgroundColor: "#F5F5F5",
+  },
+  dynHero: {
+    width: "100%",
+    height: "100%",
+  },
+  dynTitle: {
+    fontSize: 21,
+    lineHeight: 27,
+    fontWeight: "800",
+    letterSpacing: -0.3,
+  },
+  dynTitleBelowHero: {
+    marginTop: 10,
+  },
+  dynExcerpt: {
+    fontSize: 14,
+    lineHeight: 20,
+    marginTop: 8,
+    fontWeight: "400",
+  },
+  dynExcerptBelowHero: {
+    marginTop: 10,
+    flex: 0,
+  },
+  dynThumbWrap: {
+    alignItems: "flex-start",
+  },
+  dynThumb: {
+    width: 104,
+    height: 104,
+    borderRadius: 12,
+  },
+  dynFooter: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 14,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: "#EFEFEF",
+  },
+  dynAvatar: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+    backgroundColor: "#F3F4F6",
+  },
+  dynAvatarText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#444444",
+  },
+  dynAuthor: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  dynReadTime: {
+    fontSize: 12,
+    fontWeight: "400",
+  },
+
+  /* blog / long-form article cards */
+  blog: {
+    padding: 18,
+  },
+  blogBrandRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  blogBrandMark: {
+    width: 26,
+    height: 26,
+    borderRadius: 6,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  blogBrandMarkText: {
+    color: "#FFFFFF",
+    fontSize: 13,
+    fontWeight: "800",
+  },
+  blogBrand: {
+    fontSize: 12,
+    fontWeight: "800",
+    letterSpacing: 0.6,
+    textTransform: "uppercase",
+    flexShrink: 1,
+  },
+  blogHeroWrap: {
+    marginTop: 12,
+    borderRadius: 12,
+    overflow: "hidden",
+    backgroundColor: "#F4F4F5",
+  },
+  blogHero: {
+    width: "100%",
+    height: 150,
+  },
+  blogTitle: {
+    fontSize: 20,
+    lineHeight: 26,
+    fontWeight: "800",
+    marginTop: 12,
+  },
+  blogTitleSerif: {
+    fontFamily: "serif",
+    fontWeight: "700",
+  },
+  substackTitle: {
+    fontSize: 22,
+    lineHeight: 28,
+    fontFamily: "serif",
+    fontWeight: "700",
+    marginTop: 12,
+  },
+  substackWordmark: {
+    fontSize: 15,
+    fontWeight: "800",
+    color: "#FF6719",
+    letterSpacing: -0.2,
+  },
+  blogSubtitle: {
+    fontSize: 14,
+    lineHeight: 20,
+    marginTop: 8,
+  },
+  blogByline: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 12,
+  },
+  blogAvatar: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: "#E5E7EB",
+  },
+  blogAvatarFallback: {
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  blogAvatarText: {
+    fontSize: 11,
+    fontWeight: "800",
+  },
+  blogAuthor: {
+    fontSize: 13,
+    fontWeight: "700",
+    flexShrink: 1,
+  },
+  blogMeta: {
+    fontSize: 12,
+    flexShrink: 0,
+  },
+  blogTagsRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+    marginTop: 12,
+  },
+  blogTag: {
+    borderRadius: 999,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+  },
+  blogTagText: {
+    fontSize: 11,
+    fontWeight: "700",
+  },
+  blogFooterRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+    marginTop: 12,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: "#EFEFEF",
+  },
+  blogStat: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+  },
+  blogStatText: {
+    fontSize: 12,
+    fontWeight: "600",
+  },
+
+  /* X article */
+  xaHeroWrap: {
+    borderRadius: 14,
+    overflow: "hidden",
+    backgroundColor: "#F4F4F5",
+  },
+  xaHero: {
+    width: "100%",
+    height: 170,
+  },
+  xaBadge: {
+    position: "absolute",
+    left: 10,
+    bottom: 10,
+    backgroundColor: "rgba(0,0,0,0.72)",
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  xaBadgeStandalone: {
+    alignSelf: "flex-start",
+    backgroundColor: "#0F1419",
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  xaBadgeText: {
+    color: "#FFFFFF",
+    fontSize: 11,
+    fontWeight: "800",
+    letterSpacing: 0.4,
+  },
+  xaHeadline: {
+    fontSize: 21,
+    lineHeight: 27,
+    fontWeight: "800",
+    marginTop: 12,
+  },
+
+  /* LinkedIn article */
+  liMark: {
+    width: 26,
+    height: 26,
+    borderRadius: 5,
+    backgroundColor: "#0A66C2",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  liMarkText: {
+    color: "#FFFFFF",
+    fontSize: 13,
+    fontWeight: "800",
+  },
+  laKicker: {
+    fontSize: 12,
+    fontWeight: "800",
+    letterSpacing: 0.6,
+    color: "#0A66C2",
+    textTransform: "uppercase",
+    marginTop: 14,
   },
 });
 

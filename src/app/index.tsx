@@ -145,12 +145,12 @@ export default function HomeScreen() {
           {/* Top Navigation Bar */}
           <View className="flex-row items-center justify-between mb-8">
             <View className="flex-row items-center">
-              <View
-                className="w-11 h-11 rounded-2xl bg-emerald-500 items-center justify-center mr-3"
+              <Image
+                source={require("@/assets/images/header-logo.png")}
+                className="w-11 h-11 rounded-2xl mr-3"
                 style={shadowMd}
-              >
-                <Link2 size={22} color="#ffffff" strokeWidth={2.5} />
-              </View>
+                accessibilityLabel="LinkSnap logo"
+              />
               <View>
                 <Text
                   className={`text-2xl font-black tracking-tight ${

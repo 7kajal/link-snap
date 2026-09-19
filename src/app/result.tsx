@@ -135,7 +135,8 @@ type PresetCategoryId =
   | "food"
   | "travel"
   | "launch"
-  | "developer";
+  | "developer"
+  | "linksnap";
 
 type PresetCategory = {
   id: PresetCategoryId;
@@ -180,10 +181,26 @@ const PRESET_NAMES: Record<CardTheme, string> = {
   amazon: "Amazon",
   meesho: "Meesho",
   flipkart: "Flipkart",
+  blogspot: "Blogspot",
+  devto: "DEV",
+  xarticle: "X Article",
+  linkedarticle: "LinkedIn Article",
+  substack: "Substack",
+  wordpress: "WordPress",
+  hashnode: "Hashnode",
+  ebay: "eBay",
+  etsy: "Etsy",
+  aliexpress: "AliExpress",
+  walmart: "Walmart",
+  linksnap: "LinkSnap",
 };
 
 const PRESET_CATEGORIES: PresetCategory[] = [
-  { id: "blog", label: "Blog", themes: ["medium"] },
+  {
+    id: "blog",
+    label: "Blog",
+    themes: ["medium", "devto", "blogspot", "xarticle", "linkedarticle", "substack", "wordpress", "hashnode"],
+  },
   { id: "social", label: "Social", themes: ["tweet", "post", "linkedin", "pinterest"] },
   {
     id: "entertainment",
@@ -193,11 +210,16 @@ const PRESET_CATEGORIES: PresetCategory[] = [
   { id: "podcasts", label: "Podcasts", themes: ["kukufm", "applepodcasts", "pocketfm"] },
   { id: "gaming", label: "Gaming", themes: ["game"] },
   { id: "books", label: "Book & Comics", themes: ["kindle", "wattpad", "pratilipi", "webtoon"] },
-  { id: "shopping", label: "Shopping", themes: ["app", "amazon", "meesho", "flipkart"] },
+  {
+    id: "shopping",
+    label: "Shopping",
+    themes: ["app", "amazon", "meesho", "flipkart", "ebay", "etsy", "aliexpress", "walmart"],
+  },
   { id: "food", label: "Food", themes: ["zomato", "swiggy"] },
   { id: "travel", label: "Travel", themes: ["stay"] },
   { id: "launch", label: "Launch", themes: ["launch"] },
   { id: "developer", label: "Developer", themes: ["repo"] },
+  { id: "linksnap", label: "LinkSnap", themes: ["linksnap"] },
 ];
 
 type ThemeField = {
@@ -479,6 +501,10 @@ export default function ResultScreen() {
   const [cMrp, setCMrp] = useState("");
   const [cRating, setCRating] = useState("");
   const [cSeller, setCSeller] = useState("");
+  const [cCondition, setCCondition] = useState("");
+  const [cSold, setCSold] = useState("");
+  const [cSellerFeedback, setCSellerFeedback] = useState("");
+  const [cFeedbackPercent, setCFeedbackPercent] = useState("");
 
   // Twitch extras (auto from Worker Helix when configured, else manual)
   const [streamKind, setStreamKind] = useState<TwitchKind | "">("");
@@ -547,6 +573,14 @@ export default function ResultScreen() {
       result.commerceRating != null ? String(result.commerceRating) : "",
     );
     setCSeller(result.commerceSeller || "");
+    setCCondition(result.commerceCondition || "");
+    setCSold(result.commerceSold || "");
+    setCSellerFeedback(result.commerceSellerFeedback || "");
+    setCFeedbackPercent(
+      result.sellerFeedbackPercent != null
+        ? String(result.sellerFeedbackPercent)
+        : "",
+    );
     setStreamKind("");
     setStreamGame(result.gameName || "");
     setStreamViewers(
@@ -576,14 +610,14 @@ export default function ResultScreen() {
       if (!result.author && result.twitchLogin) setAuthor(result.twitchLogin);
     }
     // Auto-detect: platform links switch to their template
-    if (result.isTweet) setTheme("tweet");
+    if (result.isTweet) setTheme(result.isXArticle ? "xarticle" : "tweet");
     else if (result.isYouTube) setTheme("youtube");
     else if (result.isTwitch) setTheme("stream");
     else if (result.isTikTok) setTheme("clip");
     else if (result.isReddit) setTheme("post");
     else if (result.isSpotify) setTheme("music");
     else if (result.isGitHub) setTheme("repo");
-    else if (result.isLinkedIn) setTheme("linkedin");
+    else if (result.isLinkedIn) setTheme(result.isLinkedInArticle ? "linkedarticle" : "linkedin");
     else if (result.isIndeed) setTheme("indeed");
     else if (result.isZomato) setTheme("zomato");
     else if (result.isSwiggy) setTheme("swiggy");
@@ -594,13 +628,27 @@ export default function ResultScreen() {
     else if (result.isBook) setTheme("book");
     else if (result.isLaunch) setTheme("launch");
     else if (result.isCommerce) {
-      if (result.commerceStore === "amazon" || result.commerceStore === "meesho" || result.commerceStore === "flipkart") {
+      if (
+        result.commerceStore === "amazon" ||
+        result.commerceStore === "meesho" ||
+        result.commerceStore === "flipkart" ||
+        result.commerceStore === "ebay" ||
+        result.commerceStore === "etsy" ||
+        result.commerceStore === "aliexpress" ||
+        result.commerceStore === "walmart"
+      ) {
         setTheme(result.commerceStore);
       } else {
         setTheme("commerce");
       }
     }
+    else if (result.isSubstack) setTheme("substack");
+    else if (result.isDevTo) setTheme("devto");
+    else if (result.isHashnode) setTheme("hashnode");
+    else if (result.isBlogspot) setTheme("blogspot");
+    else if (result.isWordPress) setTheme("wordpress");
     else if (result.isMedium) setTheme("medium");
+    else setTheme("linksnap");
   }
 
   function themeFields(t: CardTheme): ThemeField[] {
@@ -778,7 +826,16 @@ export default function ResultScreen() {
         },
       ];
     }
-    if (t === "commerce" || t === "amazon" || t === "meesho" || t === "flipkart") {
+    if (
+      t === "commerce" ||
+      t === "amazon" ||
+      t === "meesho" ||
+      t === "flipkart" ||
+      t === "ebay" ||
+      t === "etsy" ||
+      t === "aliexpress" ||
+      t === "walmart"
+    ) {
       return [
         {
           key: "price",
@@ -808,6 +865,38 @@ export default function ResultScreen() {
           placeholder: "Seller (e.g. RetailNet)",
           keyboard: "default" as const,
         },
+        ...(t === "ebay" || t === "etsy" || t === "aliexpress" || t === "walmart"
+          ? [
+              {
+                key: "condition",
+                value: cCondition,
+                setter: setCCondition,
+                placeholder: "Condition (e.g. New / Open Box)",
+                keyboard: "default" as const,
+              },
+              {
+                key: "sold",
+                value: cSold,
+                setter: setCSold,
+                placeholder: "Sold count (e.g. 212 sold)",
+                keyboard: "default" as const,
+              },
+              {
+                key: "sellerFeedback",
+                value: cSellerFeedback,
+                setter: setCSellerFeedback,
+                placeholder: "Seller feedback (e.g. (12,034))",
+                keyboard: "default" as const,
+              },
+              {
+                key: "feedbackPercent",
+                value: cFeedbackPercent,
+                setter: setCFeedbackPercent,
+                placeholder: "Positive feedback % (e.g. 97.3)",
+                keyboard: "decimal-pad" as const,
+              },
+            ]
+          : []),
       ];
     }
     if (t === "stream") {
@@ -1118,35 +1207,14 @@ export default function ResultScreen() {
           placeholder: "Artist (e.g. Arijit Singh)",
           keyboard: "default" as const,
         },
-        {
-          key: "kind",
-          value: spKindLabel,
-          setter: setSpKindLabel,
-          placeholder: "Kind (e.g. Song / Album)",
-          keyboard: "default" as const,
-        },
-        {
-          key: "author",
-          value: author,
-          setter: setAuthor,
-          placeholder: "Author (e.g. Vikram Sampath)",
-          keyboard: "default" as const,
-        },
       ];
     }
     if (t === "netflix" || t === "primevideo" || t === "hotstar") {
       return [
         {
-          key: "tagline",
-          value: excerpt,
-          setter: setExcerpt,
-          placeholder: "Tagline (e.g. Stranger Things)",
-          keyboard: "default" as const,
-        },
-        {
           key: "meta",
-          value: pill,
-          setter: setPill,
+          value: location,
+          setter: setLocation,
           placeholder: "Meta (e.g. 2016 · 12+)",
           keyboard: "default" as const,
         },
@@ -1178,6 +1246,77 @@ export default function ResultScreen() {
       ];
     }
     if (t === "repo") return [];
+    if (t === "xarticle") {
+      return [
+        {
+          key: "author",
+          value: author,
+          setter: setAuthor,
+          placeholder: "Author (e.g. BSPK)",
+          keyboard: "default" as const,
+        },
+        {
+          key: "handle",
+          value: tweetHandle,
+          setter: setTweetHandle,
+          placeholder: "Handle without @ (e.g. BSPK_)",
+          keyboard: "default" as const,
+        },
+        {
+          key: "dateText",
+          value: dateText,
+          setter: setDateText,
+          placeholder: "Date (e.g. Sep 12, 2026)",
+          keyboard: "default" as const,
+        },
+        {
+          key: "views",
+          value: tweetViews,
+          setter: setTweetViews,
+          placeholder: "Views (e.g. 45K)",
+          keyboard: "default" as const,
+        },
+      ];
+    }
+    if (t === "linkedarticle" || t === "substack" || t === "hashnode") {
+      return [
+        {
+          key: "author",
+          value: author,
+          setter: setAuthor,
+          placeholder: "Author (e.g. Eric Cai)",
+          keyboard: "default" as const,
+        },
+        {
+          key: "readMinutes",
+          value: readMinutes,
+          setter: setReadMinutes,
+          placeholder: "Read time mins (e.g. 5)",
+          keyboard: "numeric" as const,
+        },
+        {
+          key: "dateText",
+          value: dateText,
+          setter: setDateText,
+          placeholder: "Date (e.g. Sep 15, 2026)",
+          keyboard: "default" as const,
+        },
+        {
+          key: "likes",
+          value: tweetLikes,
+          setter: setTweetLikes,
+          placeholder: "Likes (e.g. 117)",
+          keyboard: "numeric" as const,
+        },
+        {
+          key: "replies",
+          value: tweetReplies,
+          setter: setTweetReplies,
+          placeholder: "Comments (e.g. 51)",
+          keyboard: "numeric" as const,
+        },
+      ];
+    }
     return [
       {
         key: "author",
@@ -1390,6 +1529,7 @@ export default function ResultScreen() {
     likes: tweetLikes,
     replies: tweetReplies,
     avatarUrl: tweetAvatar,
+    views: tweetViews,
     youtubeKind: ytKind,
     duration: ytDuration,
     watching: ytWatching,
@@ -1399,6 +1539,10 @@ export default function ResultScreen() {
     mrp: cMrp,
     rating: cRating,
     seller: cSeller,
+    condition: cCondition,
+    sold: cSold,
+    sellerFeedback: cSellerFeedback,
+    feedbackPercent: cFeedbackPercent ? parseFloat(cFeedbackPercent) || null : null,
     streamKind,
     game: streamGame,
     viewers: streamViewers,
@@ -2624,6 +2768,10 @@ export default function ResultScreen() {
                                 "youtube",
                                 "stream",
                                 "linkedin",
+                                "xarticle",
+                                "linkedarticle",
+                                "substack",
+                                "hashnode",
                               ].includes(theme) ? (
                                 <Pressable
                                   onPress={() => setShowCounts(!showCounts)}
@@ -2647,7 +2795,7 @@ export default function ResultScreen() {
                                   </View>
                                 </Pressable>
                               ) : null}
-                              {["medium"].includes(
+                              {["medium", "blogspot", "devto", "linkedarticle", "substack", "wordpress", "hashnode"].includes(
                                 theme,
                               ) ? (
                                 <Pressable

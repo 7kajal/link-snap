@@ -1,0 +1,19 @@
+- generic [ref=f2e6]:
+  - generic [ref=f2e8]:
+    - generic [ref=f2e9]:
+      - generic [ref=f2e10]:
+        - button "Dismiss error" [disabled] [ref=f2e11]
+        - button "Minimize errors" [disabled] [ref=f2e14]
+      - generic [ref=f2e18]:
+        - button "Previous error" [disabled] [ref=f2e19]
+        - generic [ref=f2e22]: 1/1
+        - button "Next error" [disabled] [ref=f2e23]
+    - generic [ref=f2e26]:
+      - button "Reload application" [ref=f2e27] [cursor=pointer]
+      - button "Copy error" [ref=f2e30] [cursor=pointer]
+      - generic [ref=f2e36]: Expo 57.0.0
+  - generic [ref=f2e40]:
+    - generic [ref=f2e41]:
+      - generic [ref=f2e42]: Server Error
+      - generic [ref=f2e44]: Cannot read properties of undefined (reading 'getEnforcing')
+    - contentinfo [ref=f2e47]: Build-time errors can only be dismissed by fixing the issue.
