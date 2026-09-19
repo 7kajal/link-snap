@@ -693,8 +693,7 @@ const LinkCardView = forwardRef<View, LinkCardViewProps>(function LinkCardView(
   const onLayout = (e: LayoutChangeEvent) => setWidth(e.nativeEvent.layout.width);
 
   const height = width * (isStory ? 16 / 9 : 1);
-  const safeTop = isStory && safeMode ? height * 0.12 : 0;
-  const safeBottom = isStory && safeMode ? height * 0.1 : 0;
+  const safeInset = isStory && safeMode ? height * 0.1 : 0;
 
   const url = preview?.url || "https://example.com";
   const title = preview?.title?.trim() || "Paste a link to generate your story card";
@@ -1355,6 +1354,7 @@ const LinkCardView = forwardRef<View, LinkCardViewProps>(function LinkCardView(
           title={title}
           excerpt={excerpt}
           authorName={authorName}
+          brandName={preview?.siteName?.trim() || publisher}
           minutes={minutes}
           showReadTime={hasReadTime}
           image={previewImage}
@@ -1376,7 +1376,7 @@ const LinkCardView = forwardRef<View, LinkCardViewProps>(function LinkCardView(
       {width > 0 ? (
         <>
           <SceneBackdrop image={backgroundImage ?? previewImage} palette={palette} mode={bgMode} solidColor={bgColor} blur={blurRadius} vignette={vignette} />
-          <View style={[styles.scene, { paddingTop: safeTop, paddingBottom: safeBottom }]}>
+          <View style={[styles.scene, { paddingVertical: safeInset }]}>
             <CardImageFitContext.Provider value={imageFit}>
               <CardShell theme={theme} colorScheme={colorScheme}>{renderTheme()}</CardShell>
             </CardImageFitContext.Provider>
@@ -3165,6 +3165,15 @@ function PratilipiCard({
         <View style={styles.prDot} />
         <Text style={styles.prProvider}>Pratilipi</Text>
       </View>
+      <View style={styles.prBottomRow}>
+        {image ? (
+          <CardMedia uri={image} style={styles.prCover} />
+        ) : (
+          <View style={[styles.prCover, styles.prCoverFallback]}>
+            <BookOpen size={22} color="#FF6B2C" strokeWidth={1.6} />
+          </View>
+        )}
+      </View>
       <Text style={styles.prTitle} numberOfLines={2}>
         {title}
       </Text>
@@ -3176,15 +3185,6 @@ function PratilipiCard({
           {excerpt}
         </Text>
       ) : null}
-      <View style={styles.prBottomRow}>
-        {image ? (
-          <CardMedia uri={image} style={styles.prCover} />
-        ) : (
-          <View style={[styles.prCover, styles.prCoverFallback]}>
-            <BookOpen size={22} color="#FF6B2C" strokeWidth={1.6} />
-          </View>
-        )}
-      </View>
     </View>
   );
 }
@@ -3304,6 +3304,7 @@ function DynamicCard({
   title,
   excerpt,
   authorName,
+  brandName,
   minutes,
   showReadTime,
   image,
@@ -3314,6 +3315,7 @@ function DynamicCard({
   title: string;
   excerpt: string;
   authorName: string;
+  brandName: string;
   minutes: number;
   showReadTime: boolean;
   image: string | null;
@@ -3332,9 +3334,16 @@ function DynamicCard({
           <Text style={[styles.dynAvatarText, { color: colors.secondary }]}>{getInitials(authorName)}</Text>
         </View>
       )}
-      <Text style={[styles.dynAuthor, { color: colors.primary }]} numberOfLines={1}>
-        {authorName || "Link"}
-      </Text>
+      <View style={styles.dynIdentity}>
+        <Text style={[styles.dynBrand, { color: colors.primary }]} numberOfLines={1}>
+          {brandName || authorName || "Link"}
+        </Text>
+        {authorName && authorName.toLowerCase() !== brandName.toLowerCase() ? (
+          <Text style={[styles.dynAuthor, { color: colors.muted }]} numberOfLines={1}>
+            {authorName}
+          </Text>
+        ) : null}
+      </View>
       {showReadTime ? (
         <Text style={[styles.dynReadTime, { color: colors.muted }]} numberOfLines={1}>
           {`${minutes} min read`}
@@ -3354,7 +3363,7 @@ function DynamicCard({
     return (
       <View style={styles.dyn}>
         <View style={[styles.dynHeroWrap, { height: heroHeight }]}>
-          <Image source={{ uri: image }} style={styles.dynHero} resizeMode="contain" />
+          <CardMedia uri={image} style={styles.dynHero} />
         </View>
         <Text style={[styles.dynTitle, styles.dynTitleBelowHero, { color: colors.primary }]} numberOfLines={2}>
           {title}
@@ -3523,14 +3532,14 @@ function DevToCard({
           DEV Community
         </Text>
       </View>
-      <Text style={[styles.blogTitle, { color: colors.primary }]} numberOfLines={3}>
-        {title}
-      </Text>
       {image ? (
         <View style={styles.blogHeroWrap}>
           <CardMedia uri={image} style={styles.blogHero} />
         </View>
       ) : null}
+      <Text style={[styles.blogTitle, { color: colors.primary }]} numberOfLines={3}>
+        {title}
+      </Text>
       {excerpt ? (
         <Text style={[styles.blogSubtitle, { color: colors.secondary }]} numberOfLines={2}>
           {excerpt}
@@ -3667,6 +3676,15 @@ function LinkedArticleCard({
         </View>
         <Text style={[styles.blogBrand, { color: "#0A66C2" }]}>LinkedIn</Text>
       </View>
+      {image ? (
+        <View style={styles.blogHeroWrap}>
+          <CardMedia uri={image} style={styles.blogHero} />
+        </View>
+      ) : null}
+      <Text style={[styles.laKicker]}>Article</Text>
+      <Text style={[styles.blogTitle, { color: colors.primary }]} numberOfLines={3}>
+        {headline}
+      </Text>
       <View style={styles.blogByline}>
         {avatar ? (
           <Image source={{ uri: avatar }} style={styles.blogAvatar} resizeMode="cover" />
@@ -3686,15 +3704,6 @@ function LinkedArticleCard({
           ) : null}
         </View>
       </View>
-      <Text style={[styles.laKicker]}>Article</Text>
-      <Text style={[styles.blogTitle, { color: colors.primary }]} numberOfLines={3}>
-        {headline}
-      </Text>
-      {image ? (
-        <View style={styles.blogHeroWrap}>
-          <CardMedia uri={image} style={styles.blogHero} />
-        </View>
-      ) : null}
       <View style={styles.blogFooterRow}>
         {!hideCounts && likes != null ? (
           <View style={styles.blogStat}>
@@ -4205,11 +4214,12 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   shell: {
+    transform: [{ translateY: -24 }],
     shadowColor: "#000000",
-    shadowOffset: { width: 0, height: 16 },
-    shadowOpacity: 0.5,
-    shadowRadius: 28,
-    elevation: 28,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.42,
+    shadowRadius: 24,
+    elevation: 20,
     backgroundColor: "transparent",
   },
   shellSurface: {
@@ -4352,6 +4362,8 @@ const styles = StyleSheet.create({
     fontWeight: "500",
   },
   ytThumbWrap: {
+    alignSelf: "stretch",
+    width: "100%",
     marginTop: 12,
     borderRadius: 12,
     overflow: "hidden",
@@ -4359,8 +4371,11 @@ const styles = StyleSheet.create({
     backgroundColor: "#212121",
   },
   ytThumb: {
-    width: "100%",
-    height: "100%",
+    position: "absolute",
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
   },
   ytDuration: {
     position: "absolute",
@@ -6905,10 +6920,17 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: "#444444",
   },
-  dynAuthor: {
+  dynIdentity: {
     flex: 1,
+  },
+  dynBrand: {
     fontSize: 13,
-    fontWeight: "600",
+    fontWeight: "700",
+  },
+  dynAuthor: {
+    fontSize: 11,
+    fontWeight: "500",
+    marginTop: 1,
   },
   dynReadTime: {
     fontSize: 12,

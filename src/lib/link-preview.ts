@@ -1744,7 +1744,7 @@ function hostIs(url: string, ...roots: string[]): boolean {
 export function isLinkedInUrl(url: string): boolean {
   try {
     const host = new URL(url.trim()).hostname.toLowerCase();
-    return host === "linkedin.com" || host.endsWith(".linkedin.com");
+    return host === "linkedin.com" || host.endsWith(".linkedin.com") || host === "lnkd.in" || host.endsWith(".lnkd.in");
   } catch {
     return false;
   }
@@ -1769,6 +1769,25 @@ export function cleanLinkedInText(text: string): string {
   return m ? (m[2].trim() || m[1].trim()) : cleaned;
 }
 
+/** Cheap HTML-level check for LinkedIn article signals (beyond /pulse/ URLs). */
+export function hasLinkedInArticleSignals(html: string): boolean {
+  // A cover image is unique to articles; otherwise defer to strict JSON-LD parsing
+  // (Article/NewsArticle, or SocialMediaPosting that carries an articleBody).
+  return /article-cover_image/i.test(html) || parseLinkedInArticleJsonLd(html) !== null;
+}
+
+/** Extract a LinkedIn article JSON-LD node. Pulse uses Article/NewsArticle; article posts published from the feed use SocialMediaPosting carrying articleBody. */
+function findLinkedInArticleNode(html: string): Record<string, unknown> | null {
+  for (const node of getJsonLdNodes(html)) {
+    const t = Array.isArray(node["@type"]) ? node["@type"] : [node["@type"]];
+    if (t.includes("Article") || t.includes("NewsArticle")) return node;
+    if (t.includes("SocialMediaPosting") && typeof node["articleBody"] === "string" && node["articleBody"].trim()) {
+      return node;
+    }
+  }
+  return null;
+}
+
 /** Extract Article JSON-LD stats for a LinkedIn Pulse article. */
 export function parseLinkedInArticleJsonLd(html: string): {
   headline?: string;
@@ -1778,7 +1797,7 @@ export function parseLinkedInArticleJsonLd(html: string): {
   commentCount?: number;
   image?: string;
 } | null {
-  const node = findLdNode(getJsonLdNodes(html), ["Article", "NewsArticle"]);
+  const node = findLinkedInArticleNode(html);
   if (!node) return null;
   const str = (v: unknown): string | null => {
     const t = typeof v === "string" ? v : Array.isArray(v) && typeof v[0] === "string" ? v[0] : null;
@@ -1804,7 +1823,14 @@ export function parseLinkedInArticleJsonLd(html: string): {
   }
   commentCount = commentCount ?? numOr(node.commentCount);
 
-  const img = typeof node.image === "string" ? node.image : Array.isArray(node.image) ? String(node.image[0] ?? "") : null;
+  const imgNode = node.image;
+  const img = typeof imgNode === "string"
+    ? imgNode
+    : Array.isArray(imgNode)
+      ? String(firstObj(imgNode[0])?.url ?? imgNode[0] ?? "")
+      : firstObj(imgNode)?.url
+        ? String(firstObj(imgNode)?.url)
+        : Array.isArray(imgNode) ? String(imgNode[0] ?? "") : null;
   return {
     headline: str(node.headline) || undefined,
     author: author || undefined,
@@ -1815,33 +1841,58 @@ export function parseLinkedInArticleJsonLd(html: string): {
   };
 }
 
-async function fetchLinkedInPreview(url: string): Promise<LinkPreview | null> {
+/** Trim the trailing "| <author>" or "| LinkedIn" from an og:title-derived article heading. */
+export function cleanLinkedInHeadline(text: string, author?: string | null): string {
+  let out = text.trim();
+  if (author) {
+    const esc = author.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    out = out.replace(new RegExp(`\\s*\\|\\s*${esc}\\s*$`, "i"), "").trim();
+  }
+  out = out.replace(/\s*\|\s*LinkedIn\s*$/i, "").trim();
+  return out;
+}
+
+async function fetchLinkedInPreview(url: string, resolvedHtml?: string | null): Promise<LinkPreview | null> {
   const og = await fetchOgWithFallback(url, "LinkedIn");
   if (!og) return null;
-  const title = cleanLinkedInText(og.title || og.author || og.description || "");
-  const base: LinkPreview = {
-    ...og,
-    siteName: "LinkedIn",
-    isLinkedIn: true,
-    headline: title || null,
-  };
-  if (!isLinkedInArticleUrl(url)) return base;
-  let html: string | null = null;
+  let html: string | null = resolvedHtml && resolvedHtml.includes("<") ? resolvedHtml : null;
   try {
-    const res = await fetch(url);
-    if (res.ok) {
-      const text = await res.text();
-      if (text && text.includes("<")) html = text;
+    if (!html) {
+      const res = await fetch(url);
+      if (res.ok) {
+        const text = await res.text();
+        if (text && text.includes("<")) html = text;
+      }
     }
   } catch {
     // og-only fallback below
   }
+  const isArticleUrl = isLinkedInArticleUrl(url);
+  const signalsArticle = html ? hasLinkedInArticleSignals(html) : false;
+  if (!isArticleUrl && !signalsArticle) {
+    const title = cleanLinkedInText(og.title || og.author || og.description || "");
+    return {
+      ...og,
+      siteName: "LinkedIn",
+      isLinkedIn: true,
+      headline: cleanLinkedInHeadline(title, og.author) || null,
+      author: og.author || null,
+    };
+  }
   const ld = html ? parseLinkedInArticleJsonLd(html) : null;
+  const author = ld?.author || og.author || null;
+  let title = cleanLinkedInHeadline(cleanLinkedInText(og.title || og.author || og.description || ""), author);
+  // LinkedIn article og:title is "{Headline} | {Author}" — drop the trailing
+  // author segment even when the author isn't separately available.
+  title = title.replace(/\s*\|\s*[^|]*$/i, "").trim();
   return {
-    ...base,
+    ...og,
+    siteName: "LinkedIn",
+    isLinkedIn: true,
     isLinkedInArticle: true,
-    headline: ld?.headline || base.headline,
-    author: ld?.author || og.author,
+    title: title || og.title || "",
+    headline: title || ld?.headline || null,
+    author,
     publishedAt: ld?.datePublished || og.publishedAt,
     likeCount: ld?.likeCount ?? og.likeCount ?? null,
     replyCount: ld?.commentCount ?? og.replyCount ?? null,
@@ -1899,10 +1950,11 @@ export function isXArticleUrl(url: string): boolean {
   }
 }
 
-/** HEURISTIC: an /i/status/ page renders as an article when the SSR JSON carries
- *  both an "Article"-typed entry and a "views" field (tweets have no views prop). */
+/** HEURISTIC: X's logged-out article page renders an "Article" heading. Older
+ *  responses can instead expose an Article-typed entry in the SSR JSON. */
 export function detectXArticle(html: string): boolean {
   if (/\/i\/article\//i.test(html.slice(0, 600))) return true;
+  if (/<h[1-6]\b[^>]*>\s*Article\s*<\/h[1-6]>/i.test(html)) return true;
   return /"Article"\s*:\s*\{/.test(html) && /"views"\s*:\s*"/.test(html);
 }
 
@@ -3114,7 +3166,9 @@ async function resolveRedirectOnly(url: string): Promise<string | null> {
         continue;
       }
     }
-    if (response.ok && moved) {
+    // The redirect destination itself may reject HEAD (X article URLs return
+    // 404 here) while the Location chain is still valid for platform routing.
+    if (moved) {
       const finalUrl = normalizeUrl(response.url) || current;
       return finalUrl;
     }
@@ -3182,6 +3236,13 @@ export async function fetchLinkPreview(input: string): Promise<LinkPreview> {
     // The page HTML was already fetched by resolvePage — sniff it for an article.
     if (resolvedPage?.html && detectXArticle(resolvedPage.html)) {
       return finish(buildXArticlePreview(url, resolvedPage.html, parseOpenGraph(resolvedPage.html, url)));
+    }
+    // If the page body was unavailable, make one direct article sniff before
+    // oEmbed. oEmbed then provides a second signal by resolving link-only t.co
+    // tweets to their canonical /i/article/ destination.
+    if (!resolvedPage?.html) {
+      const article = await sniffXArticle(url);
+      if (article) return finish(article);
     }
     const tweet = await fetchTweetPreview(url);
     if (tweet) return finish(tweet);
@@ -3270,7 +3331,7 @@ export async function fetchLinkPreview(input: string): Promise<LinkPreview> {
   }
 
   if (isLinkedInUrl(url)) {
-    const li = await fetchLinkedInPreview(url);
+    const li = await fetchLinkedInPreview(url, resolvedPage?.html);
     if (li) return finish(li);
     // Without a readable source the template still auto-selects.
     return finish(
@@ -3480,7 +3541,7 @@ export function parseOpenGraph(html: string, url: string): LinkPreview {
     favicon: getFavicon(),
     siteName: getSiteName(),
     author: getAuthor(),
-    readingMinutes: estimateReadingMinutes(`${title} ${description}`),
+    readingMinutes: null,
     publishedAt: getPublishedAt(),
     isTweet: isTweetUrl(url),
     handle: null,
@@ -3581,7 +3642,7 @@ export function parseMarkdown(md: string, url: string): LinkPreview {
     image,
     siteName: host,
     author: null,
-    readingMinutes: estimateReadingMinutes(`${title} ${description}`),
+    readingMinutes: null,
     publishedAt: null,
     isTweet: isTweetUrl(url),
     handle: null,

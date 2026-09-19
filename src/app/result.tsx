@@ -484,7 +484,7 @@ export default function ResultScreen() {
   // Show/hide all engagement counts on the card
   const [showCounts, setShowCounts] = useState(true);
   // Show/hide the "N min read" label on blog/reading cards
-  const [showReadTime, setShowReadTime] = useState(true);
+  const [showReadTime, setShowReadTime] = useState(false);
 
   // YouTube extras (auto from worker/scrape when available, else manual)
   const [ytKind, setYtKind] = useState<YouTubeKind | "">("");
@@ -604,6 +604,7 @@ export default function ResultScreen() {
     setBookPages(result.pages != null ? String(result.pages) : "");
     setLaunchTagline(result.tagline || "");
     setLaunchUpvotes(result.upvotes != null ? String(result.upvotes) : "");
+    setShowReadTime((result.readingMinutes ?? 0) > 0);
     if (result.isTwitch) {
       // Without worker creds the title/author are empty — keep the handle
       // handy so the card still labels the channel.
