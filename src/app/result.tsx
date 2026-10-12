@@ -67,6 +67,7 @@ import {
 } from "@/lib/link-preview";
 import { hexToHsv, hsvToHex } from "@/lib/palette";
 import { displayToSource, readTilePixel, rgbaToHex } from "@/lib/pixel-sampler";
+import { getSetting, usePersistedSetting } from "@/lib/settings";
 import {
   getAvailableWhatsAppVariants,
   getAvailableTargets,
@@ -377,10 +378,16 @@ export default function ResultScreen() {
     useState<PresetCategoryId | null>(null);
   const [presetPagerWidth, setPresetPagerWidth] = useState(0);
   const [presetPagerProgress] = useState(() => new RNAnimated.Value(0));
-  const [cardAppearance, setCardAppearance] = useState<CardAppearance>("auto");
-  const [imageFit, setImageFit] = useState<CardImageFit>("cover");
-  const [bgMode, setBgMode] = useState<CardBackgroundMode>("image");
-  const [bgColor, setBgColor] = useState("#0B0B12");
+  const [cardAppearance, setCardAppearance] =
+    usePersistedSetting<CardAppearance>("card.appearance", "auto");
+  const [imageFit, setImageFit] =
+    usePersistedSetting<CardImageFit>("card.fit", "cover");
+  const [bgMode, setBgMode] =
+    usePersistedSetting<CardBackgroundMode>("card.bgMode", "image");
+  const [bgColor, setBgColor] = usePersistedSetting<string>(
+    "card.bgColor",
+    "#0B0B12",
+  );
   const [backgroundImage, setBackgroundImage] = useState<{
     uri: string;
     width: number;
@@ -395,10 +402,21 @@ export default function ResultScreen() {
   const [toolbarScrollX, setToolbarScrollX] = useState(0);
   const [toolbarViewportWidth, setToolbarViewportWidth] = useState(0);
   const [toolbarContentWidth, setToolbarContentWidth] = useState(0);
-  const [blurStrength, setBlurStrength] = useState(8);
-  const [vignetteStrength, setVignetteStrength] = useState(0);
-  const [customHsv, setCustomHsv] = useState({ h: 240, s: 0.39, v: 0.07 });
-  const [hexText, setHexText] = useState("#0B0B12");
+  const [blurStrength, setBlurStrength] =
+    usePersistedSetting<number>("card.blur", 8);
+  const [vignetteStrength, setVignetteStrength] =
+    usePersistedSetting<number>("card.vignette", 0);
+  // Hex color + picker state derive from the persisted bgColor so the restored
+  // color keeps the HSV picker and text field in sync.
+  const [customHsv, setCustomHsv] = useState(() => {
+    const restored = getSetting<string>("card.bgColor", "#0B0B12");
+    return (
+      hexToHsv(restored) ?? { h: 240, s: 0.39, v: 0.07 }
+    );
+  });
+  const [hexText, setHexText] = useState(() =>
+    getSetting<string>("card.bgColor", "#0B0B12"),
+  );
 
   const detectedPresetCategory = useMemo<PresetCategoryId>(() => {
     if (!preview) return "custom";
@@ -482,7 +500,10 @@ export default function ResultScreen() {
   const [postViews, setPostViews] = useState("");
 
   // Show/hide all engagement counts on the card
-  const [showCounts, setShowCounts] = useState(true);
+  const [showCounts, setShowCounts] = usePersistedSetting<boolean>(
+    "card.showCounts",
+    true,
+  );
   // Show/hide the "N min read" label on blog/reading cards
   const [showReadTime, setShowReadTime] = useState(false);
 
@@ -1878,7 +1899,7 @@ export default function ResultScreen() {
     setCustomHsv({ h, s, v });
     setBgColor(hex);
     setHexText(hex);
-  }, []);
+  }, [setBgColor]);
 
   const applySV = useCallback(
     (x: number, y: number) => {

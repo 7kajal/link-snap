@@ -44,6 +44,8 @@ export default function HomeScreen() {
   const [clipboardUrl, setClipboardUrl] = useState<string | null>(null);
   const history = useHistory();
 
+  const HOME_CAROUSEL_LIMIT = 10;
+
   function extractUrl(text: string): string {
     const matched = text.match(/(https?:\/\/[^\s]+)/g);
     return matched ? matched[0] : text.trim();
@@ -365,6 +367,9 @@ export default function HomeScreen() {
                       }`}
                     >
                       Recent Generations
+                      {history.length > HOME_CAROUSEL_LIMIT
+                        ? ` · ${history.length} total`
+                        : ""}
                     </Text>
                   </View>
                   <Pressable
@@ -381,7 +386,7 @@ export default function HomeScreen() {
                 </View>
 
                 <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                  {history.map((item, idx) => (
+                  {history.slice(0, HOME_CAROUSEL_LIMIT).map((item, idx) => (
                     <Pressable
                       key={`${item.url}-${idx}`}
                       onPress={() => {
@@ -425,6 +430,27 @@ export default function HomeScreen() {
                     </Pressable>
                   ))}
                 </ScrollView>
+
+                {history.length > HOME_CAROUSEL_LIMIT ? (
+                  <Pressable
+                    onPress={() => router.push("/history")}
+                    accessibilityRole="button"
+                    className={`mt-3 self-start flex-row items-center px-4 py-2.5 rounded-full border ${
+                      isDarkMode
+                        ? "bg-zinc-900 border-zinc-800 active:bg-zinc-800"
+                        : "bg-white border-zinc-200 active:bg-zinc-100"
+                    }`}
+                  >
+                    <Text
+                      className={`text-xs font-bold mr-1 ${
+                        isDarkMode ? "text-emerald-400" : "text-emerald-600"
+                      }`}
+                    >
+                      View all
+                    </Text>
+                    <ArrowRight size={12} color="#10b981" />
+                  </Pressable>
+                ) : null}
               </View>
             ) : (
               /* How It Works Section */
