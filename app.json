@@ -92,5 +92,12 @@
     "experiments": {
       "typedRoutes": true
     },
+"extra": {
+      "router": {},
+      "eas": {
+        "projectId": "1c6532a7-07a5-4804-8713-9d1920cadb4f"
+      }
+    },
+    "owner": "7kajal"
   }
 }
