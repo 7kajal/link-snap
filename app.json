@@ -92,13 +92,5 @@
     "experiments": {
       "typedRoutes": true
     },
-    "extra": {
-      "ytWorkerUrl": "",
-      "fbAppId": "",
-      "router": {},
-      "eas": {
-        "projectId": "f373713e-377e-4890-81c9-cf83faacc02a"
-      }
-    }
   }
 }
