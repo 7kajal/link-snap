@@ -39,7 +39,7 @@ import {
   ThumbsUp,
   Tv,
 } from "lucide-react-native";
-import Svg, { Defs, RadialGradient, Rect, Stop } from "react-native-svg";
+import Svg, { Circle, Defs, Path, RadialGradient, Rect, Stop } from "react-native-svg";
 import { domainFromUrl, getPalette, type Palette } from "@/lib/palette";
 import { SCENE_SCALE } from "@/lib/pixel-sampler";
 import { useImageSize } from "@/lib/use-image-size";
@@ -1181,6 +1181,7 @@ const LinkCardView = forwardRef<View, LinkCardViewProps>(function LinkCardView(
           likeCount={likeCount}
           replyCount={replyCount}
           avatar={avatar}
+          image={previewImage}
           hideCounts={hideCounts}
         />
       );
@@ -1561,42 +1562,43 @@ function MusicCard({
 }) {
   const colors = useCardColors();
   return (
-    <View style={[styles.music, { backgroundColor: colors.surface }]}>
-      <View style={styles.musicProviderRow}>
-        <View style={styles.musicDot} />
-        <Text style={[styles.musicProvider, { color: colors.muted }]} numberOfLines={1}>
-          Spotify
-        </Text>
-        {kind ? (
-          <Text style={styles.musicKind} numberOfLines={1}>
-            {SPOTIFY_LABEL[kind] || kind.toUpperCase()}
-          </Text>
-        ) : null}
-      </View>
-      <View style={styles.musicRow}>
+    <View
+      style={[styles.music, { backgroundColor: colors.surface }]}
+    >
+      <View style={styles.musicArtworkWrap}>
         {cover ? (
           <CardMedia uri={cover} style={styles.musicCover} />
         ) : (
           <View style={[styles.musicCover, styles.musicCoverFallback]}>
-            <Music size={26} color="#1DB954" strokeWidth={1.5} />
+            <Music size={42} color="#1ED760" strokeWidth={1.5} />
           </View>
         )}
-        <View style={styles.musicCol}>
-          <Text style={[styles.musicTitle, { color: colors.primary }]} numberOfLines={2}>
-            {title}
-          </Text>
-          <Text style={[styles.musicArtist, { color: colors.secondary }]} numberOfLines={1}>
-            {artist}
-          </Text>
+        <View style={styles.musicPlayButton}>
+          <Play size={17} color="#000000" fill="#000000" strokeWidth={2.5} />
         </View>
       </View>
+      <Text style={[styles.musicTitle, { color: colors.primary }]} numberOfLines={2}>
+        {title}
+      </Text>
+      <Text style={[styles.musicArtist, { color: colors.secondary }]} numberOfLines={1}>
+        {artist}{kind ? ` · ${SPOTIFY_LABEL[kind] || kind.toUpperCase()}` : ""}
+      </Text>
       <View style={styles.musicFooter}>
-        <View style={styles.musicLogo}>
-          <Music size={10} color="#000000" strokeWidth={2.5} />
-        </View>
-        <Text style={[styles.musicFooterText, { color: colors.muted }]}>Spotify</Text>
+        <SpotifyLogo size={16} />
+        <Text style={styles.musicFooterText}>Spotify</Text>
       </View>
     </View>
+  );
+}
+
+function SpotifyLogo({ size = 18 }: { size?: number }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24">
+      <Circle cx="12" cy="12" r="12" fill="#1ED760" />
+      <Path d="M6.3 8.7c3.9-1.15 8.55-.9 11.65.8" stroke="#07130B" strokeWidth="1.8" strokeLinecap="round" fill="none" />
+      <Path d="M6.9 12c3.35-.9 7.45-.66 10.2.72" stroke="#07130B" strokeWidth="1.65" strokeLinecap="round" fill="none" />
+      <Path d="M7.55 15.1c2.8-.66 6.05-.45 8.55.72" stroke="#07130B" strokeWidth="1.5" strokeLinecap="round" fill="none" />
+    </Svg>
   );
 }
 
@@ -4037,31 +4039,14 @@ function YouTubeCard({
 
 /* ---------------- Template C: X/Twitter post card ---------------- */
 
-function XLogo({ size = 20 }: { size?: number }) {
-  const barH = Math.max(2, size * 0.11);
+function XLogo({ size = 20, color }: { size?: number; color: string }) {
   return (
-    <View style={{ width: size, height: size, alignItems: "center", justifyContent: "center" }}>
-      <View
-        style={{
-          position: "absolute",
-          width: size,
-          height: barH,
-          borderRadius: barH / 2,
-          backgroundColor: "#0F1419",
-          transform: [{ rotate: "45deg" }],
-        }}
+    <Svg width={size} height={size} viewBox="0 0 24 24">
+      <Path
+        fill={color}
+        d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817-5.967 6.817H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231 5.45-6.231Zm-1.161 17.52h1.833L7.084 4.126H5.117L17.083 19.77Z"
       />
-      <View
-        style={{
-          position: "absolute",
-          width: size,
-          height: barH,
-          borderRadius: barH / 2,
-          backgroundColor: "#0F1419",
-          transform: [{ rotate: "-45deg" }],
-        }}
-      />
-    </View>
+    </Svg>
   );
 }
 
@@ -4092,6 +4077,7 @@ function TweetCard({
   likeCount,
   replyCount,
   avatar,
+  image,
   hideCounts,
 }: {
   body: string;
@@ -4103,6 +4089,7 @@ function TweetCard({
   likeCount: number | null;
   replyCount: number | null;
   avatar: string | null;
+  image: string | null;
   hideCounts: boolean;
 }) {
   const colors = useCardColors();
@@ -4127,11 +4114,12 @@ function TweetCard({
             {handle ? `@${handle} · ` : ""}{timeLabel}
           </Text>
         </View>
-        <XLogo size={18} />
+        <XLogo size={18} color={colors.primary} />
       </View>
       <Text style={[styles.twBody, { color: colors.primary }]} numberOfLines={6}>
         {body}
       </Text>
+      {image ? <CardMedia uri={image} style={styles.twMedia} /> : null}
       {!hideCounts ? (
         <View style={[styles.twFooter, { borderTopColor: colors.divider }]}>
           {views != null ? (
@@ -4278,6 +4266,14 @@ const styles = StyleSheet.create({
     lineHeight: 23,
     color: "#0F1419",
     marginTop: 10,
+  },
+  twMedia: {
+    width: "100%",
+    aspectRatio: 16 / 10,
+    borderRadius: 14,
+    marginTop: 12,
+    backgroundColor: "#E7E9EA",
+    overflow: "hidden",
   },
   twFooter: {
     flexDirection: "row",
@@ -4570,7 +4566,11 @@ const styles = StyleSheet.create({
   /* spotify embed */
   music: {
     backgroundColor: "#121212",
-    padding: 16,
+    padding: 14,
+  },
+  musicArtworkWrap: {
+    position: "relative",
+    width: "100%",
   },
   musicProviderRow: {
     flexDirection: "row",
@@ -4603,23 +4603,39 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   musicCover: {
-    width: 64,
-    height: 64,
-    borderRadius: 10,
+    width: "100%",
+    aspectRatio: 1,
+    borderRadius: 12,
     backgroundColor: "#1E1E1E",
+    overflow: "hidden",
   },
   musicCoverFallback: {
     alignItems: "center",
     justifyContent: "center",
   },
-  musicCol: {
-    flex: 1,
+  musicPlayButton: {
+    position: "absolute",
+    right: 10,
+    bottom: 10,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: "#1ED760",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingLeft: 2,
+    shadowColor: "#000000",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.35,
+    shadowRadius: 5,
+    elevation: 5,
   },
   musicTitle: {
     fontSize: 16,
     lineHeight: 22,
     fontWeight: "800",
     color: "#FFFFFF",
+    marginTop: 12,
   },
   musicArtist: {
     fontSize: 13,
@@ -4631,20 +4647,15 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    marginTop: 12,
-  },
-  musicLogo: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    backgroundColor: "#1DB954",
-    alignItems: "center",
-    justifyContent: "center",
+    marginTop: 11,
+    paddingTop: 10,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: "rgba(255, 255, 255, 0.18)",
   },
   musicFooterText: {
     fontSize: 12,
     fontWeight: "700",
-    color: "#717171",
+    color: "#1ED760",
   },
 
   /* github embed */

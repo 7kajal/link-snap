@@ -231,6 +231,49 @@ type ThemeField = {
   keyboard: "default" | "numeric" | "decimal-pad" | "url";
 };
 
+type DetailOverrideValue = string | boolean;
+type DetailOverrides = Partial<
+  Record<CardTheme, Record<string, DetailOverrideValue>>
+>;
+
+function cardThemeForPreview(result: LinkPreview): CardTheme {
+  if (result.isTweet) return result.isXArticle ? "xarticle" : "tweet";
+  if (result.isYouTube) return "youtube";
+  if (result.isTwitch) return "stream";
+  if (result.isTikTok) return "clip";
+  if (result.isReddit) return "post";
+  if (result.isSpotify) return "music";
+  if (result.isGitHub) return "repo";
+  if (result.isLinkedIn)
+    return result.isLinkedInArticle ? "linkedarticle" : "linkedin";
+  if (result.isIndeed) return "indeed";
+  if (result.isZomato) return "zomato";
+  if (result.isSwiggy) return "swiggy";
+  if (result.isPinterest) return "pinterest";
+  if (result.isApp) return "app";
+  if (result.isStay) return "stay";
+  if (result.isGame) return "game";
+  if (result.isBook) return "book";
+  if (result.isLaunch) return "launch";
+  if (
+    result.isCommerce &&
+    result.commerceStore &&
+    ["amazon", "meesho", "flipkart", "ebay", "etsy", "aliexpress", "walmart"].includes(
+      result.commerceStore,
+    )
+  ) {
+    return result.commerceStore as CardTheme;
+  }
+  if (result.isCommerce) return "commerce";
+  if (result.isSubstack) return "substack";
+  if (result.isDevTo) return "devto";
+  if (result.isHashnode) return "hashnode";
+  if (result.isBlogspot) return "blogspot";
+  if (result.isWordPress) return "wordpress";
+  if (result.isMedium) return "medium";
+  return "linksnap";
+}
+
 const TOOLS: { id: ToolId; label: string; icon: typeof Layers }[] = [
   { id: "theme", label: "Presets", icon: Layers },
   { id: "details", label: "Edit", icon: PenLine },
@@ -500,10 +543,11 @@ export default function ResultScreen() {
   const [postViews, setPostViews] = useState("");
 
   // Show/hide all engagement counts on the card
-  const [showCounts, setShowCounts] = usePersistedSetting<boolean>(
-    "card.showCounts",
-    true,
+  const [showCounts, setShowCounts] = useState(() =>
+    getSetting<boolean>("card.showCounts", true),
   );
+  const [detailOverrides, setDetailOverrides] =
+    usePersistedSetting<DetailOverrides>("card.detailOverrides.v1", {});
   // Show/hide the "N min read" label on blog/reading cards
   const [showReadTime, setShowReadTime] = useState(false);
 
@@ -561,6 +605,82 @@ export default function ResultScreen() {
   // Product Hunt launch extras
   const [launchTagline, setLaunchTagline] = useState("");
   const [launchUpvotes, setLaunchUpvotes] = useState("");
+
+  function rememberDetail(
+    detailTheme: CardTheme,
+    key: string,
+    value: DetailOverrideValue,
+  ) {
+    setDetailOverrides((current) => {
+      const nextTheme = { ...(current[detailTheme] || {}) };
+      if (typeof value === "string" && value.length === 0) delete nextTheme[key];
+      else nextTheme[key] = value;
+      return { ...current, [detailTheme]: nextTheme };
+    });
+  }
+
+  function applyDetailValue(
+    detailTheme: CardTheme,
+    key: string,
+    value: DetailOverrideValue,
+  ) {
+    if (key === "showCounts" && typeof value === "boolean") return setShowCounts(value);
+    if (key === "showReadTime" && typeof value === "boolean") return setShowReadTime(value);
+    if (key === "verified" && typeof value === "boolean") return setTweetVerified(value);
+    if (key === "youtubeKind" && typeof value === "string")
+      return setYtKind(value as YouTubeKind | "");
+    if (key === "streamKind" && typeof value === "string")
+      return setStreamKind(value as TwitchKind | "");
+    if (typeof value !== "string") return;
+    if (key === "views") {
+      if (detailTheme === "youtube") return setYtViews(value);
+      if (detailTheme === "clip") return setClipViews(value);
+      if (detailTheme === "post") return setPostViews(value);
+      return setTweetViews(value);
+    }
+    const setters: Record<string, (next: string) => void> = {
+      author: setAuthor,
+      artist: setAuthor,
+      handle: setTweetHandle,
+      dateText: setDateText,
+      likes: setTweetLikes,
+      replies: setTweetReplies,
+      avatar: setTweetAvatar,
+      duration: setYtDuration,
+      watching: setYtWatching,
+      subreddit: setPostSubreddit,
+      score: setPostScore,
+      price: setCPrice,
+      mrp: setCMrp,
+      rating: setCRating,
+      seller: setCSeller,
+      condition: setCCondition,
+      sold: setCSold,
+      sellerFeedback: setCSellerFeedback,
+      feedbackPercent: setCFeedbackPercent,
+      game: setStreamGame,
+      viewers: setStreamViewers,
+      headline: setLiHeadline,
+      reposts: setLiReposts,
+      salary: setJobSalary,
+      jobType: setJobType,
+      location: setLocation,
+      meta: setLocation,
+      cuisine: setCuisine,
+      eta: setEta,
+      category: setAppCategory,
+      downloads: setAppDownloads,
+      host: setStayHost,
+      genre: setGameGenre,
+      releaseDate: setGameRelease,
+      bookPages: setBookPages,
+      pages: setBookPages,
+      tagline: setLaunchTagline,
+      upvotes: setLaunchUpvotes,
+      readMinutes: setReadMinutes,
+    };
+    setters[key]?.(value);
+  }
 
   function applyPreviewDetails(result: LinkPreview) {
     // Pre-fill editable details from parsed metadata (user can tweak)
@@ -631,46 +751,16 @@ export default function ResultScreen() {
       // handy so the card still labels the channel.
       if (!result.author && result.twitchLogin) setAuthor(result.twitchLogin);
     }
-    // Auto-detect: platform links switch to their template
-    if (result.isTweet) setTheme(result.isXArticle ? "xarticle" : "tweet");
-    else if (result.isYouTube) setTheme("youtube");
-    else if (result.isTwitch) setTheme("stream");
-    else if (result.isTikTok) setTheme("clip");
-    else if (result.isReddit) setTheme("post");
-    else if (result.isSpotify) setTheme("music");
-    else if (result.isGitHub) setTheme("repo");
-    else if (result.isLinkedIn) setTheme(result.isLinkedInArticle ? "linkedarticle" : "linkedin");
-    else if (result.isIndeed) setTheme("indeed");
-    else if (result.isZomato) setTheme("zomato");
-    else if (result.isSwiggy) setTheme("swiggy");
-    else if (result.isPinterest) setTheme("pinterest");
-    else if (result.isApp) setTheme("app");
-    else if (result.isStay) setTheme("stay");
-    else if (result.isGame) setTheme("game");
-    else if (result.isBook) setTheme("book");
-    else if (result.isLaunch) setTheme("launch");
-    else if (result.isCommerce) {
-      if (
-        result.commerceStore === "amazon" ||
-        result.commerceStore === "meesho" ||
-        result.commerceStore === "flipkart" ||
-        result.commerceStore === "ebay" ||
-        result.commerceStore === "etsy" ||
-        result.commerceStore === "aliexpress" ||
-        result.commerceStore === "walmart"
-      ) {
-        setTheme(result.commerceStore);
-      } else {
-        setTheme("commerce");
+    // Auto-detect the template, then layer only user-edited values over fresh
+    // metadata. Overrides are isolated per platform/card theme.
+    const detectedTheme = cardThemeForPreview(result);
+    setTheme(detectedTheme);
+    const saved = detailOverrides[detectedTheme];
+    if (saved) {
+      for (const [key, value] of Object.entries(saved)) {
+        applyDetailValue(detectedTheme, key, value);
       }
     }
-    else if (result.isSubstack) setTheme("substack");
-    else if (result.isDevTo) setTheme("devto");
-    else if (result.isHashnode) setTheme("hashnode");
-    else if (result.isBlogspot) setTheme("blogspot");
-    else if (result.isWordPress) setTheme("wordpress");
-    else if (result.isMedium) setTheme("medium");
-    else setTheme("linksnap");
   }
 
   function themeFields(t: CardTheme): ThemeField[] {
@@ -2774,7 +2864,10 @@ export default function ResultScreen() {
                                 <TextInput
                                   key={field.key}
                                   value={field.value}
-                                  onChangeText={field.setter}
+                                  onChangeText={(value) => {
+                                    field.setter(value);
+                                    rememberDetail(theme, field.key, value);
+                                  }}
                                   placeholder={field.placeholder}
                                   placeholderTextColor="#a1a1aa"
                                   keyboardType={field.keyboard}
@@ -2796,7 +2889,11 @@ export default function ResultScreen() {
                                 "hashnode",
                               ].includes(theme) ? (
                                 <Pressable
-                                  onPress={() => setShowCounts(!showCounts)}
+                                  onPress={() => {
+                                    const next = !showCounts;
+                                    setShowCounts(next);
+                                    rememberDetail(theme, "showCounts", next);
+                                  }}
                                   className={`flex-row items-center justify-between border rounded-xl px-3.5 h-11 ${"bg-gray-100 border-zinc-200"}`}
                                 >
                                   <Text
@@ -2821,7 +2918,11 @@ export default function ResultScreen() {
                                 theme,
                               ) ? (
                                 <Pressable
-                                  onPress={() => setShowReadTime(!showReadTime)}
+                                  onPress={() => {
+                                    const next = !showReadTime;
+                                    setShowReadTime(next);
+                                    rememberDetail(theme, "showReadTime", next);
+                                  }}
                                   className={`flex-row items-center justify-between border rounded-xl px-3.5 h-11 ${"bg-gray-100 border-zinc-200"}`}
                                 >
                                   <Text
@@ -2844,9 +2945,11 @@ export default function ResultScreen() {
                               ) : null}
                               {theme === "tweet" ? (
                                 <Pressable
-                                  onPress={() =>
-                                    setTweetVerified(!tweetVerified)
-                                  }
+                                  onPress={() => {
+                                    const next = !tweetVerified;
+                                    setTweetVerified(next);
+                                    rememberDetail(theme, "verified", next);
+                                  }}
                                   className={`flex-row items-center justify-between border rounded-xl px-3.5 h-11 ${"bg-gray-100 border-zinc-200"}`}
                                 >
                                   <Text
@@ -2889,7 +2992,10 @@ export default function ResultScreen() {
                                     return (
                                       <Pressable
                                         key={k.label}
-                                        onPress={() => setYtKind(k.value)}
+                                        onPress={() => {
+                                          setYtKind(k.value);
+                                          rememberDetail(theme, "youtubeKind", k.value);
+                                        }}
                                         className={`px-4 py-2 rounded-full border ${
                                           isActive
                                             ? "bg-emerald-500/20 border-emerald-500"
@@ -2932,7 +3038,10 @@ export default function ResultScreen() {
                                     return (
                                       <Pressable
                                         key={k.label}
-                                        onPress={() => setStreamKind(k.value)}
+                                        onPress={() => {
+                                          setStreamKind(k.value);
+                                          rememberDetail(theme, "streamKind", k.value);
+                                        }}
                                         className={`px-4 py-2 rounded-full border ${
                                           isActive
                                             ? "bg-emerald-500/20 border-emerald-500"

@@ -9,6 +9,9 @@
  *   GET /twitch?url=<twitch-channel|clip|video-url>
  *     → trimmed Twitch Helix payload (live status, clips, VODs, profiles).
  *
+ *   GET /tweet?url=<x-or-twitter-status-url>
+ *     → public X embed metadata, including the first attached media image.
+ *
  * Deploy (needs your Cloudflare account + API keys):
  *   1. cd worker && npm install
  *   2. npx wrangler login
@@ -183,6 +186,9 @@ export default {
     if (reqUrl.pathname === "/twitch") {
       return handleTwitch(reqUrl, env);
     }
+    if (reqUrl.pathname === "/tweet") {
+      return handleTweet(reqUrl);
+    }
     if (reqUrl.pathname === "/resolve") {
       return handleResolve(reqUrl);
     }
@@ -233,6 +239,51 @@ async function handleImage(reqUrl: URL): Promise<Response> {
         "Content-Type": type,
       },
     });
+  } catch {
+    return json({ error: "upstream_unreachable" }, 502);
+  }
+}
+
+/* ---------------- X/Twitter public embed metadata ---------------- */
+
+function parseTweetId(raw: string): string | null {
+  try {
+    const url = new URL(raw);
+    const host = url.hostname.replace(/^www\.|^mobile\./, "").toLowerCase();
+    if (host !== "x.com" && host !== "twitter.com") return null;
+    return url.pathname.match(/\/status\/(\d{1,40})/)?.[1] || null;
+  } catch {
+    return null;
+  }
+}
+
+function tweetSyndicationToken(id: string): string {
+  return ((Number(id) / 1e15) * Math.PI)
+    .toString(36)
+    .replace(/(0+|\.)/g, "");
+}
+
+async function handleTweet(reqUrl: URL): Promise<Response> {
+  const target = reqUrl.searchParams.get("url") || "";
+  const id = parseTweetId(target);
+  if (!id) return json({ error: "invalid_tweet_url" }, 400);
+
+  const endpoint = new URL("https://cdn.syndication.twimg.com/tweet-result");
+  endpoint.searchParams.set("id", id);
+  endpoint.searchParams.set("lang", "en");
+  endpoint.searchParams.set("token", tweetSyndicationToken(id));
+
+  try {
+    const response = await fetch(endpoint, {
+      headers: { Accept: "application/json" },
+    });
+    if (response.status === 404) return json({ error: "tweet_not_found" }, 404);
+    if (!response.ok) return json({ error: "upstream_error" }, 502);
+    const data = (await response.json()) as Record<string, unknown>;
+    if (!data || data.__typename === "TweetTombstone" || Object.keys(data).length === 0) {
+      return json({ error: "tweet_unavailable" }, 404);
+    }
+    return json(data, 200, 900);
   } catch {
     return json({ error: "upstream_unreachable" }, 502);
   }

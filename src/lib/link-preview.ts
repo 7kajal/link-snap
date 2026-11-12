@@ -290,6 +290,28 @@ export type YouTubeWorkerPayload = {
   concurrentViewers: number | null;
 };
 
+type TweetSyndicationPayload = {
+  __typename?: string;
+  text?: string;
+  created_at?: string;
+  favorite_count?: number;
+  conversation_count?: number;
+  user?: {
+    name?: string;
+    screen_name?: string;
+    is_blue_verified?: boolean;
+    profile_image_url_https?: string;
+    profile_image_url?: string;
+  };
+  photos?: { url?: string }[];
+  mediaDetails?: {
+    type?: string;
+    media_url_https?: string;
+    media_url?: string;
+  }[];
+  video?: { poster?: string };
+};
+
 const TWEET_RE = /^https?:\/\/(?:www\.)?(?:x\.com|twitter\.com)\/([^/]+)\/status\/(\d+)/i;
 
 export function isTweetUrl(url: string): boolean {
@@ -366,11 +388,89 @@ export function parseTweetOembed(json: {
     author,
     handle,
     avatar,
-    image: avatar,
+    image: null,
   };
 }
 
+/** Map the public X embed payload onto the app's tweet preview model. */
+export function parseTweetSyndication(
+  json: TweetSyndicationPayload,
+  url: string,
+): LinkPreview | null {
+  if (!json || json.__typename === "TweetTombstone" || !json.user) return null;
+  const base = tweetFallback(url);
+  const user = json.user;
+  const avatar = user.profile_image_url_https || user.profile_image_url || null;
+  const media =
+    json.photos?.find((item) => item.url)?.url ||
+    json.mediaDetails?.find((item) => item.media_url_https || item.media_url)
+      ?.media_url_https ||
+    json.mediaDetails?.find((item) => item.media_url)?.media_url ||
+    json.video?.poster ||
+    null;
+  const rawText = decodeEntities(json.text || "");
+  const text = (media
+    ? rawText.replace(/\s+https?:\/\/t\.co\/\S+\s*$/i, "")
+    : rawText
+  ).trim();
+  return {
+    ...base,
+    title: text,
+    author: user.name?.trim() || null,
+    handle: user.screen_name?.trim() || null,
+    avatar,
+    verified: !!user.is_blue_verified,
+    image: media,
+    publishedAt: json.created_at || null,
+    likeCount:
+      typeof json.favorite_count === "number" ? json.favorite_count : null,
+    replyCount:
+      typeof json.conversation_count === "number"
+        ? json.conversation_count
+        : null,
+  };
+}
+
+function tweetIdFromUrl(url: string): string | null {
+  return url.match(TWEET_RE)?.[2] || null;
+}
+
+function tweetSyndicationToken(id: string): string {
+  return ((Number(id) / 1e15) * Math.PI)
+    .toString(36)
+    .replace(/(0+|\.)/g, "");
+}
+
+async function fetchTweetSyndication(url: string): Promise<LinkPreview | null> {
+  const id = tweetIdFromUrl(url);
+  if (!id) return null;
+  const worker = getWorkerBaseUrl();
+  const direct =
+    `https://cdn.syndication.twimg.com/tweet-result?id=${id}` +
+    `&lang=en&token=${tweetSyndicationToken(id)}`;
+  const sources = worker
+    ? [`${worker}/tweet?url=${encodeURIComponent(url)}`, direct]
+    : [direct];
+
+  for (const source of sources) {
+    try {
+      const response = await fetch(source, {
+        headers: { Accept: "application/json" },
+      });
+      if (!response.ok) continue;
+      const payload = (await response.json()) as TweetSyndicationPayload;
+      const parsed = parseTweetSyndication(payload, url);
+      if (parsed) return parsed;
+    } catch {
+      // Browser CORS can block the direct endpoint; continue to oEmbed.
+    }
+  }
+  return null;
+}
+
 async function fetchTweetPreview(url: string): Promise<LinkPreview | null> {
+  const syndicated = await fetchTweetSyndication(url);
+  if (syndicated) return syndicated;
   try {
     const res = await fetch(
       `https://publish.twitter.com/oembed?url=${encodeURIComponent(url)}&omit_script=true`,
