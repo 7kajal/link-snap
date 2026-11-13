@@ -1,10 +1,23 @@
 import { Linking, Platform } from 'react-native';
-import Share, { Social } from 'react-native-share';
 import type { RefObject } from 'react';
 import type { View } from 'react-native';
 
 import { getFbAppId } from './config';
 import { captureCardAsImage, saveCardImage, shareCard } from './share';
+
+type RNShareModule = typeof import('react-native-share');
+
+/**
+ * react-native-share is native-only and evaluates
+ * `TurboModuleRegistry.getEnforcing('RNShare')` at import time. On web,
+ * react-native resolves to react-native-web, which has no TurboModuleRegistry,
+ * so importing it crashes Expo Router's static render. Load it lazily and only
+ * on native platforms.
+ */
+async function loadRNShare(): Promise<RNShareModule | null> {
+  if (Platform.OS === 'web') return null;
+  return import('react-native-share');
+}
 
 export type ShareTargetId = 'instagram' | 'whatsapp' | 'facebook' | 'save' | 'more';
 
@@ -38,9 +51,12 @@ const IOS_SCHEMES: Record<Exclude<ShareTargetId, 'more' | 'save'>, string[]> = {
 
 async function isAppInstalled(target: Exclude<ShareTargetId, 'more' | 'save'>): Promise<boolean> {
   try {
+    const rnShare = await loadRNShare();
+    if (!rnShare) return false;
+
     if (Platform.OS === 'android') {
       for (const pkg of ANDROID_PACKAGES[target]) {
-        const res = await Share.isPackageInstalled(pkg);
+        const res = await rnShare.default.isPackageInstalled(pkg);
         if (res?.isInstalled) return true;
       }
       return false;
@@ -90,10 +106,13 @@ export type WhatsAppVariant = 'personal' | 'business';
 export async function getAvailableWhatsAppVariants(): Promise<WhatsAppVariant[]> {
   if (Platform.OS !== 'android') return ['personal'];
 
+  const rnShare = await loadRNShare();
+  if (!rnShare) return ['personal'];
+
   const [personal, business] = await Promise.all(
     ANDROID_PACKAGES.whatsapp.map(async (pkg) => {
       try {
-        return Boolean((await Share.isPackageInstalled(pkg))?.isInstalled);
+        return Boolean((await rnShare.default.isPackageInstalled(pkg))?.isInstalled);
       } catch {
         return false;
       }
@@ -125,17 +144,33 @@ export async function shareToTarget(
   if (!uri) throw new Error('Could not capture the card image');
 
   try {
+    if (target === 'save') {
+      // Save the rendered card to the device photo library (download on web).
+      const saved = await saveCardImage(ref);
+      return saved ? 'shared' : 'cancelled';
+    }
+    if (target === 'more') {
+      // System share sheet (existing behavior).
+      const ok = await shareCard(ref);
+      return ok ? 'shared' : 'cancelled';
+    }
+
+    const rnShare = await loadRNShare();
+    if (!rnShare) {
+      throw new Error('Sharing to apps is not supported on this platform');
+    }
+
     if (target === 'instagram') {
-      await Share.shareSingle({
-        social: Social.InstagramStories,
+      await rnShare.default.shareSingle({
+        social: rnShare.Social.InstagramStories,
         appId: getFbAppId(),
         backgroundImage: uri,
       });
       return 'shared';
     }
     if (target === 'facebook') {
-      await Share.shareSingle({
-        social: Social.FacebookStories,
+      await rnShare.default.shareSingle({
+        social: rnShare.Social.FacebookStories,
         appId: getFbAppId(),
         backgroundImage: uri,
       });
@@ -143,25 +178,20 @@ export async function shareToTarget(
     }
     if (target === 'whatsapp') {
       // Opens WhatsApp's picker (includes My Status on supported versions).
-      await Share.shareSingle({
+      await rnShare.default.shareSingle({
         social:
           whatsAppVariant === 'business'
-            ? Social.Whatsappbusiness
-            : Social.Whatsapp,
+            ? rnShare.Social.Whatsappbusiness
+            : rnShare.Social.Whatsapp,
         url: uri,
         type: 'image/png',
         message,
       });
       return 'shared';
     }
-    if (target === 'save') {
-      // Save the rendered card to the device photo library (download on web).
-      const saved = await saveCardImage(ref);
-      return saved ? 'shared' : 'cancelled';
-    }
-    // 'more' → system share sheet (existing behavior).
-    const ok = await shareCard(ref);
-    return ok ? 'shared' : 'cancelled';
+
+    // Unreachable: every ShareTargetId is handled above.
+    return 'cancelled';
   } catch (err) {
     if (isUserCancel(err)) return 'cancelled';
     throw err;

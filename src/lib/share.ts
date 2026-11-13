@@ -1,6 +1,5 @@
 import { Platform, Share } from 'react-native';
 import * as Sharing from 'expo-sharing';
-import { Asset, requestPermissionsAsync } from 'expo-media-library';
 import { captureRef } from 'react-native-view-shot';
 import type { RefObject } from 'react';
 import type { View } from 'react-native';
@@ -67,6 +66,9 @@ export async function saveCardImage(ref: RefObject<View | null>): Promise<boolea
     return true;
   }
 
+  // expo-media-library imports its native module at module scope; loading it
+  // on web crashes static rendering, so pull it in only for native saves.
+  const { Asset, requestPermissionsAsync } = await import('expo-media-library');
   const { status } = await requestPermissionsAsync(true, ['photo']);
   if (status !== 'granted') return false;
   await Asset.create(uri);
