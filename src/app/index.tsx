@@ -9,10 +9,9 @@ import {
   Globe,
   Layers,
   Link2,
-  Moon,
+  Settings,
   Share2,
   Sparkles,
-  Sun,
   Trash2,
   XCircle,
 } from "lucide-react-native";
@@ -29,13 +28,15 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 
+import { SettingsSheet } from "@/components/settings-sheet";
 import { BottomTabInset, shadowMd } from "@/constants/theme";
 import { useAppAppearance } from "@/contexts/appearance-context";
 import { clearHistory, useHistory } from "@/lib/history";
 
 export default function HomeScreen() {
   const router = useRouter();
-  const { isDarkMode, toggleDarkMode } = useAppAppearance();
+  const { isDarkMode } = useAppAppearance();
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   const [url, setUrl] = useState("");
   const [isFocused, setIsFocused] = useState(false);
@@ -149,8 +150,15 @@ export default function HomeScreen() {
             <View className="flex-row items-center">
               <Image
                 source={require("@/assets/images/header-logo.png")}
-                className="w-11 h-11 rounded-2xl mr-3"
-                style={shadowMd}
+                // Explicit dimensions: react-native-web renders the native
+                // asset size when only className is provided.
+                style={{
+                  ...shadowMd,
+                  width: 44,
+                  height: 44,
+                  borderRadius: 16,
+                  marginRight: 12,
+                }}
                 accessibilityLabel="LinkSnap logo"
               />
               <View>
@@ -172,8 +180,8 @@ export default function HomeScreen() {
             </View>
 
             <Pressable
-              onPress={toggleDarkMode}
-              accessibilityLabel="Toggle Dark Mode"
+              onPress={() => setSettingsOpen(true)}
+              accessibilityLabel="Open settings"
               accessibilityRole="button"
               className={`w-11 h-11 items-center justify-center rounded-2xl border ${
                 isDarkMode
@@ -181,11 +189,11 @@ export default function HomeScreen() {
                   : "bg-white border-zinc-200 active:bg-zinc-100"
               }`}
             >
-              {isDarkMode ? (
-                <Sun size={18} color="#fbbf24" strokeWidth={2.2} />
-              ) : (
-                <Moon size={18} color="#3f3f46" strokeWidth={2.2} />
-              )}
+              <Settings
+                size={18}
+                color={isDarkMode ? "#e4e4e7" : "#3f3f46"}
+                strokeWidth={2.2}
+              />
             </Pressable>
           </View>
 
@@ -527,6 +535,11 @@ export default function HomeScreen() {
         </ScrollView>
         </SafeAreaView>
       </KeyboardAvoidingView>
+
+      <SettingsSheet
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+      />
     </View>
   );
 }

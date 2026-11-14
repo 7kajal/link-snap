@@ -71,6 +71,7 @@ import { getSetting, usePersistedSetting } from "@/lib/settings";
 import {
   getAvailableWhatsAppVariants,
   getAvailableTargets,
+  getDefaultAvailableTargets,
   SHARE_TARGETS,
   shareToTarget,
   type ShareTargetId,
@@ -407,13 +408,9 @@ export default function ResultScreen() {
   );
   const [activeTool, setActiveTool] = useState<ToolId | null>(null);
   const [editing, setEditing] = useState(false);
-  const [available, setAvailable] = useState<Record<ShareTargetId, boolean>>({
-    instagram: false,
-    whatsapp: false,
-    facebook: false,
-    save: true,
-    more: true,
-  });
+  const [available, setAvailable] = useState<Record<ShareTargetId, boolean>>(
+    getDefaultAvailableTargets,
+  );
 
   // Customization States
   const [theme, setTheme] = useState<CardTheme>("post");
@@ -1486,6 +1483,8 @@ export default function ResultScreen() {
   }
 
   useEffect(() => {
+    // load() flips the loading flags as the fetch starts.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     load(typeof urlParam === "string" ? urlParam : urlParam?.[0]);
     getAvailableTargets()
       .then(setAvailable)

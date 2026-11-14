@@ -20,6 +20,8 @@ export function useImageSize(uri: string | null | undefined): ImageSize {
 
   useEffect(() => {
     if (!uri) {
+      // Reset when the caller removes the image.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setSize({ width: 0, height: 0, loaded: false });
       return;
     }

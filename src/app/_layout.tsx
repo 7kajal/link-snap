@@ -7,10 +7,12 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 
 import { AnimatedSplashOverlay } from "@/components/animated-icon";
+import { UpdateNotice } from "@/components/update-notice";
 import {
   AppearanceProvider,
   useAppAppearance,
 } from "@/contexts/appearance-context";
+import { UpdateProvider } from "@/contexts/update-context";
 import { hydrateHistory } from "@/lib/history";
 import { hydrateSettings } from "@/lib/settings";
 
@@ -24,6 +26,7 @@ function AppLayout() {
       <KeyboardProvider>
         <ThemeProvider value={isDarkMode ? DarkTheme : DefaultTheme}>
           <AnimatedSplashOverlay />
+          <UpdateNotice />
           <Stack screenOptions={{ headerShown: false }}>
             <Stack.Screen name="index" />
             <Stack.Screen name="result" />
@@ -57,7 +60,9 @@ export default function RootLayout() {
 
   return (
     <AppearanceProvider>
-      <AppLayout />
+      <UpdateProvider>
+        <AppLayout />
+      </UpdateProvider>
     </AppearanceProvider>
   );
 }

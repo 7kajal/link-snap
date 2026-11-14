@@ -1081,6 +1081,31 @@ export function parseSpotifyOembed(json: {
   };
 }
 
+/** Best-effort artist names from Spotify's public embed markup. */
+async function fetchSpotifyArtist(
+  kind: SpotifyKind,
+  id: string,
+): Promise<string | null> {
+  if (kind !== "track" && kind !== "album") return null;
+  try {
+    const res = await fetch(`https://open.spotify.com/embed/${kind}/${id}`);
+    if (!res.ok) return null;
+    const html = await res.text();
+    const match = html.match(/"artists"\s*:\s*(\[[^\]]*\])/);
+    if (!match) return null;
+    const names = [...match[1].matchAll(/"name"\s*:\s*"((?:[^"\\]|\\.)*)"/g)]
+      .map((m) =>
+        decodeEntities(
+          m[1].replace(/\\"/g, '"').replace(/\\\\/g, "\\").trim(),
+        ),
+      )
+      .filter(Boolean);
+    return names.length ? names.join(", ") : null;
+  } catch {
+    return null;
+  }
+}
+
 async function fetchSpotifyPreview(url: string): Promise<LinkPreview | null> {
   // spotify.link short URLs: follow the redirect, then parse the canonical URL.
   let canon = url;
@@ -1099,7 +1124,13 @@ async function fetchSpotifyPreview(url: string): Promise<LinkPreview | null> {
     if (!res.ok) return null;
     const json = await res.json();
     if (!json || typeof json !== "object" || !json.title) return null;
-    return parseSpotifyOembed(json, canon);
+    const preview = parseSpotifyOembed(json, canon);
+    const parsed = parseSpotify(canon);
+    if (parsed) {
+      const artist = await fetchSpotifyArtist(parsed.kind, parsed.id);
+      if (artist) preview.author = artist;
+    }
+    return preview;
   } catch {
     return null;
   }

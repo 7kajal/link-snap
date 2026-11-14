@@ -3,7 +3,12 @@ import type { RefObject } from 'react';
 import type { View } from 'react-native';
 
 import { getFbAppId } from './config';
-import { captureCardAsImage, saveCardImage, shareCard } from './share';
+import {
+  captureCardAsImage,
+  saveCardImage,
+  shareCapturedImage,
+  shareCard,
+} from './share';
 
 type RNShareModule = typeof import('react-native-share');
 
@@ -75,27 +80,33 @@ async function isAppInstalled(target: Exclude<ShareTargetId, 'more' | 'save'>): 
 }
 
 /**
- * Which share targets can be offered right now. Web only supports the system
- * sheet. Android's Instagram story intent works without a Facebook App ID
- * (it is only used for attribution), so Instagram only requires the host app
- * to be installed. Facebook Stories still requires a Facebook App ID.
+ * Targets offered before the install check finishes. Instagram and WhatsApp are
+ * always shown on native so the story actions never disappear when package
+ * visibility / the native share module is unavailable (Expo Go, a stale dev
+ * build, Android package-query restrictions). `shareToTarget` falls back to the
+ * system share sheet if the target app cannot actually be opened.
  */
-export async function getAvailableTargets(): Promise<Record<ShareTargetId, boolean>> {
+export function getDefaultAvailableTargets(): Record<ShareTargetId, boolean> {
   if (Platform.OS === 'web') {
     return { instagram: false, whatsapp: false, facebook: false, save: true, more: true };
   }
+  return { instagram: true, whatsapp: true, facebook: false, save: true, more: true };
+}
+
+/**
+ * Which share targets can be offered right now. Web only supports the system
+ * sheet. Instagram and WhatsApp stay visible on native; Facebook Stories still
+ * requires a Facebook App ID and the Facebook app.
+ */
+export async function getAvailableTargets(): Promise<Record<ShareTargetId, boolean>> {
+  if (Platform.OS === 'web') {
+    return getDefaultAvailableTargets();
+  }
   const appId = getFbAppId();
-  const [instagram, whatsapp, facebook] = await Promise.all([
-    isAppInstalled('instagram'),
-    isAppInstalled('whatsapp'),
-    isAppInstalled('facebook'),
-  ]);
+  const facebook = await isAppInstalled('facebook');
   return {
-    instagram,
-    whatsapp,
+    ...getDefaultAvailableTargets(),
     facebook: facebook && appId.length > 0,
-    save: true,
-    more: true,
   };
 }
 
@@ -161,12 +172,20 @@ export async function shareToTarget(
     }
 
     if (target === 'instagram') {
-      await rnShare.default.shareSingle({
-        social: rnShare.Social.InstagramStories,
-        appId: getFbAppId(),
-        backgroundImage: uri,
-      });
-      return 'shared';
+      try {
+        await rnShare.default.shareSingle({
+          social: rnShare.Social.InstagramStories,
+          appId: getFbAppId(),
+          backgroundImage: uri,
+        });
+        return 'shared';
+      } catch (err) {
+        if (isUserCancel(err)) return 'cancelled';
+        // Instagram missing or the story intent rejected the payload: keep the
+        // action useful by handing the image to the system share sheet.
+        const ok = await shareCapturedImage(uri);
+        return ok ? 'shared' : 'cancelled';
+      }
     }
     if (target === 'facebook') {
       await rnShare.default.shareSingle({
@@ -178,16 +197,22 @@ export async function shareToTarget(
     }
     if (target === 'whatsapp') {
       // Opens WhatsApp's picker (includes My Status on supported versions).
-      await rnShare.default.shareSingle({
-        social:
-          whatsAppVariant === 'business'
-            ? rnShare.Social.Whatsappbusiness
-            : rnShare.Social.Whatsapp,
-        url: uri,
-        type: 'image/png',
-        message,
-      });
-      return 'shared';
+      try {
+        await rnShare.default.shareSingle({
+          social:
+            whatsAppVariant === 'business'
+              ? rnShare.Social.Whatsappbusiness
+              : rnShare.Social.Whatsapp,
+          url: uri,
+          type: 'image/png',
+          message,
+        });
+        return 'shared';
+      } catch (err) {
+        if (isUserCancel(err)) return 'cancelled';
+        const ok = await shareCapturedImage(uri);
+        return ok ? 'shared' : 'cancelled';
+      }
     }
 
     // Unreachable: every ShareTargetId is handled above.

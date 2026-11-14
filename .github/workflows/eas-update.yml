@@ -1,0 +1,132 @@
+name: EAS Update (OTA)
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: eas-update-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          # The guard diffs the whole pushed range, so it needs the push's
+          # "before" commit even when it is several commits behind the tip.
+          fetch-depth: 0
+
+      - name: Check if OTA is safe to publish
+        id: guard
+        shell: bash
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
+          AFTER_SHA: ${{ github.event.after }}
+        run: |
+          # A push can contain several commits. Diff the entire pushed range:
+          # checking only HEAD^..HEAD lets a docs-only tip hide a JS fix.
+          if [ -n "$BEFORE_SHA" ] && [ "$BEFORE_SHA" != "0000000000000000000000000000000000000000" ] && [ -n "$AFTER_SHA" ]; then
+            CHANGED=$(git diff --name-only "$BEFORE_SHA" "$AFTER_SHA" || true)
+          else
+            CHANGED=$(git diff --name-only HEAD^ HEAD || true)
+          fi
+          echo "$CHANGED"
+
+          # Release-notes-only pushes still need the existing release body
+          # updated even though there is no new JS bundle to publish.
+          if [ -n "$CHANGED" ] && echo "$CHANGED" | grep -qE '^\.release-notes\.md$' && [ -z "$(echo "$CHANGED" | grep -vE '(^scripts/|^worker/|^\.github/|\.md$)' || true)" ]; then
+            echo "notes_changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "notes_changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          # Skip OTA when anything native-impacting changed — those require a new build.
+          if echo "$CHANGED" | grep -qE '^(package\.json|app\.json|eas\.json|patches/|android/|ios/)'; then
+            echo "safe=false" >> "$GITHUB_OUTPUT"
+            echo "Native-impacting files changed. Skipping OTA — run a new EAS build instead."
+            exit 0
+          fi
+
+          # Nothing bundled to ship: Markdown, scripts, worker and .github files
+          # are host-side and never imported by the app. Mixed pushes still publish.
+          if [ -n "$CHANGED" ] && [ -z "$(echo "$CHANGED" | grep -vE '(^scripts/|^worker/|^\.github/|\.md$)' || true)" ]; then
+            echo "safe=false" >> "$GITHUB_OUTPUT"
+            echo "Only docs/scripts/worker files changed. Skipping OTA — nothing bundled changed."
+            exit 0
+          fi
+
+          echo "safe=true" >> "$GITHUB_OUTPUT"
+
+      - name: Set up pnpm
+        if: steps.guard.outputs.safe == 'true'
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.29.2
+
+      - name: Set up Node.js
+        if: steps.guard.outputs.safe == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        if: steps.guard.outputs.safe == 'true'
+        run: pnpm install --frozen-lockfile
+
+      # Pinned so a surprise eas-cli release can't break the publish step.
+      - name: Install EAS CLI
+        if: steps.guard.outputs.safe == 'true'
+        run: npm install -g eas-cli@25.2.0
+
+      # The commit message goes through env, never through ${{ }} inside the
+      # script: GitHub writes env values into the process environment without
+      # shell parsing, so quotes, backticks and newlines stay inert.
+      - name: Publish OTA update
+        if: steps.guard.outputs.safe == 'true'
+        shell: bash
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN || secrets.EXPO_SECRET }}
+          CI: 1
+          OTA_MESSAGE: ${{ github.event.head_commit.message }}
+        run: |
+          eas update \
+            --branch production \
+            --platform android \
+            --message "${OTA_MESSAGE%%$'\n'*}"
+
+      - name: Update release notes
+        if: steps.guard.outputs.safe == 'true' || steps.guard.outputs.notes_changed == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          TAG="v$VERSION"
+
+          if ! gh release view "$TAG" --json body --jq .body > existing-release-notes.md 2>/dev/null; then
+            echo "No GitHub release found for $TAG; skipping release notes update."
+            exit 0
+          fi
+
+          node scripts/merge-release-notes.mjs .release-notes.md existing-release-notes.md merged-release-notes.md
+
+          if cmp -s existing-release-notes.md merged-release-notes.md; then
+            echo "Release notes already contain these entries."
+            exit 0
+          fi
+
+          gh release edit "$TAG" --notes-file merged-release-notes.md
+
+      - name: Skip OTA
+        if: steps.guard.outputs.safe == 'false'
+        run: echo "OTA skipped due to native-impacting changes in this push."

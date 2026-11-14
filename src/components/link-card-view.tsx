@@ -51,7 +51,6 @@ import {
   youtubeKindFromUrl,
   type CommerceStore,
   type LinkPreview,
-  type SpotifyKind,
   type TwitchKind,
   type YouTubeKind,
 } from "@/lib/link-preview";
@@ -736,11 +735,6 @@ const LinkCardView = forwardRef<View, LinkCardViewProps>(function LinkCardView(
   const rdScore = countOf(score, preview?.postScore);
   const rdComments = countOf(replies, preview?.commentCount ?? preview?.replyCount);
 
-  // Spotify resolution (artist usually needs a manual entry)
-  const spKind: SpotifyKind | null = preview?.spotifyKind || null;
-  // Brand-generic kind label for the non-Spotify music templates.
-  const mKind = spKind ? (SPOTIFY_LABEL[spKind] || spKind.toUpperCase()) : null;
-
   // Commerce resolution (price strings keep currency symbols for display)
   const store: CommerceStore = preview?.commerceStore || commerceStoreFromUrl(url) || "other";
   const cPrice = (price || "").trim() || preview?.commercePrice || null;
@@ -1112,7 +1106,6 @@ const LinkCardView = forwardRef<View, LinkCardViewProps>(function LinkCardView(
     if (theme === "music") {
       return (
         <MusicCard
-          kind={spKind}
           title={title}
           artist={authorName}
           cover={previewImage}
@@ -1192,7 +1185,6 @@ const LinkCardView = forwardRef<View, LinkCardViewProps>(function LinkCardView(
           title={title}
           artist={authorName}
           cover={previewImage}
-          kind={mKind}
         />
       );
     }
@@ -1202,7 +1194,6 @@ const LinkCardView = forwardRef<View, LinkCardViewProps>(function LinkCardView(
           title={title}
           artist={authorName}
           cover={previewImage}
-          kind={mKind}
           durationSec={ytDuration}
         />
       );
@@ -1213,7 +1204,6 @@ const LinkCardView = forwardRef<View, LinkCardViewProps>(function LinkCardView(
           title={title}
           artist={authorName}
           cover={previewImage}
-          kind={mKind}
         />
       );
     }
@@ -1223,7 +1213,6 @@ const LinkCardView = forwardRef<View, LinkCardViewProps>(function LinkCardView(
           title={title}
           artist={authorName}
           cover={previewImage}
-          kind={mKind}
         />
       );
     }
@@ -1540,22 +1529,11 @@ function PostCard({
 
 /* ---------------- Template G: Spotify music card ---------------- */
 
-const SPOTIFY_LABEL: Record<string, string> = {
-  track: "TRACK",
-  album: "ALBUM",
-  playlist: "PLAYLIST",
-  artist: "ARTIST",
-  show: "PODCAST",
-  episode: "EPISODE",
-};
-
 function MusicCard({
-  kind,
   title,
   artist,
   cover,
 }: {
-  kind: SpotifyKind | null;
   title: string;
   artist: string;
   cover: string | null;
@@ -1580,9 +1558,11 @@ function MusicCard({
       <Text style={[styles.musicTitle, { color: colors.primary }]} numberOfLines={2}>
         {title}
       </Text>
-      <Text style={[styles.musicArtist, { color: colors.secondary }]} numberOfLines={1}>
-        {artist}{kind ? ` · ${SPOTIFY_LABEL[kind] || kind.toUpperCase()}` : ""}
-      </Text>
+      {artist.trim() ? (
+        <Text style={[styles.musicArtist, { color: colors.secondary }]} numberOfLines={1}>
+          {artist}
+        </Text>
+      ) : null}
       <View style={styles.musicFooter}>
         <SpotifyLogo size={16} />
         <Text style={styles.musicFooterText}>Spotify</Text>
@@ -2562,12 +2542,10 @@ function YtMusicCard({
   title,
   artist,
   cover,
-  kind,
 }: {
   title: string;
   artist: string;
   cover: string | null;
-  kind: string | null;
 }) {
   return (
     <View style={styles.yi}>
@@ -2576,7 +2554,6 @@ function YtMusicCard({
         <Text style={styles.yiBrand} numberOfLines={1}>
           YouTube Music
         </Text>
-        {kind ? <Text style={styles.yiKind}>{kind}</Text> : null}
       </View>
       <View style={styles.yiRow}>
         {cover ? (
@@ -2605,13 +2582,11 @@ function JioSaavnCard({
   title,
   artist,
   cover,
-  kind,
   durationSec,
 }: {
   title: string;
   artist: string;
   cover: string | null;
-  kind: string | null;
   durationSec: number | null;
 }) {
   const durationLabel =
@@ -2623,7 +2598,6 @@ function JioSaavnCard({
         <Text style={styles.jsBrand} numberOfLines={1}>
           JioSaavn
         </Text>
-        {kind ? <Text style={styles.jsKind}>{kind}</Text> : null}
       </View>
       <View style={styles.jsRow}>
         {cover ? (
@@ -2661,12 +2635,10 @@ function GaanaCard({
   title,
   artist,
   cover,
-  kind,
 }: {
   title: string;
   artist: string;
   cover: string | null;
-  kind: string | null;
 }) {
   return (
     <View style={styles.gn}>
@@ -2675,7 +2647,6 @@ function GaanaCard({
         <Text style={styles.gnBrand} numberOfLines={1}>
           Gaana
         </Text>
-        {kind ? <Text style={styles.gnKind}>{kind}</Text> : null}
       </View>
       <View style={styles.gnRow}>
         {cover ? (
@@ -2708,12 +2679,10 @@ function AppleMusicCard({
   title,
   artist,
   cover,
-  kind,
 }: {
   title: string;
   artist: string;
   cover: string | null;
-  kind: string | null;
 }) {
   return (
     <View style={styles.am}>
@@ -2722,7 +2691,6 @@ function AppleMusicCard({
         <Text style={styles.amBrand} numberOfLines={1}>
           APPLE MUSIC
         </Text>
-        {kind ? <Text style={styles.amKind}>{kind}</Text> : null}
       </View>
       {cover ? (
         <CardMedia uri={cover} style={styles.amArt} />
@@ -4566,7 +4534,7 @@ const styles = StyleSheet.create({
   /* spotify embed */
   music: {
     backgroundColor: "#121212",
-    padding: 14,
+    padding: 20,
   },
   musicArtworkWrap: {
     position: "relative",
@@ -4615,8 +4583,8 @@ const styles = StyleSheet.create({
   },
   musicPlayButton: {
     position: "absolute",
-    right: 10,
-    bottom: 10,
+    right: -10,
+    bottom: -10,
     width: 38,
     height: 38,
     borderRadius: 19,
@@ -4635,7 +4603,7 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     fontWeight: "800",
     color: "#FFFFFF",
-    marginTop: 12,
+    marginTop: 30,
   },
   musicArtist: {
     fontSize: 13,

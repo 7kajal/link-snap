@@ -83,4 +83,4 @@ Optional values live in the `extra` section of `app.json`:
 ## Notes
 
 - Card details entered in the editor are sent along with the shared caption.
-- Sharing requires device photo/library permissions; a preview photo is saved automatically on iOS before sharing.
+- Sharing requires device photo/library permissions; a preview photo is saved automatically on iOS before sharing .

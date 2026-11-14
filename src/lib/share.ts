@@ -20,6 +20,22 @@ export async function captureCardAsImage(
   }
 }
 
+/**
+ * Open the system share sheet for an already-captured card. Used as a
+ * fallback when a direct app target (Instagram / WhatsApp) is unavailable.
+ */
+export async function shareCapturedImage(uri: string): Promise<boolean> {
+  if (await Sharing.isAvailableAsync()) {
+    await Sharing.shareAsync(uri, {
+      mimeType: 'image/png',
+      dialogTitle: 'Share link snap',
+      UTI: 'public.png',
+    });
+    return true;
+  }
+  return false;
+}
+
 export async function shareCard(ref: RefObject<View | null>): Promise<boolean> {
   const uri = await captureCardAsImage(ref);
   if (!uri) return false;
