@@ -95,6 +95,9 @@ importers:
       nativewind:
         specifier: ^4.2.6
         version: 4.2.7(928f33f13e8a50656a62e90608253c2e)
+      pngjs:
+        specifier: ^7.0.0
+        version: 7.0.0
       react:
         specifier: 19.2.3
         version: 19.2.3
@@ -3588,6 +3591,10 @@ packages:
   pngjs@3.4.0:
     resolution: {integrity: sha512-NCrCHhWmnQklfH4MtJMRjZ2a8c80qXeMlQMv2uVp9ISJMTt562SbGd6n2oq0PaPgKm7Z6pL9E2UlLIhC+SHL3w==}
     engines: {node: '>=4.0.0'}
+
+  pngjs@7.0.0:
+    resolution: {integrity: sha512-LKWqWJRhstyYo9pGvgor/ivk2w94eSjE3RGVuzLGlr3NmD8bf7RcYGze1mNdEHRP6TRP6rMuDHk5t44hnTRyow==}
+    engines: {node: '>=14.19.0'}
 
   possible-typed-array-names@1.1.0:
     resolution: {integrity: sha512-/+5VFTchJDoVj3bhoqi6UeymcD00DAwb1nJwamzPvHEszJ4FpF6SNNbUbOS8yI56qHzdV8eK0qEfOSiodkTdxg==}
@@ -8732,6 +8739,7 @@ snapshots:
       xmlbuilder: 15.1.1
 
   pngjs@3.4.0: {}
+  pngjs@7.0.0: {}
 
   possible-typed-array-names@1.1.0: {}
 
