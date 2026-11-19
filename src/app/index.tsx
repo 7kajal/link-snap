@@ -25,8 +25,8 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 import { SettingsSheet } from "@/components/settings-sheet";
 import { BottomTabInset, shadowMd } from "@/constants/theme";
@@ -198,9 +198,9 @@ export default function HomeScreen() {
           </View>
 
           {/* Hero Section */}
-          <View className="items-center mb-8 mt-2">
+          <View className="items-center mb-8 mt-6">
             <View
-              className={`flex-row items-center px-3 py-1.5 rounded-full border mb-4 ${
+              className={`flex-row items-center px-3 py-1.5  rounded-full border mb-4 ${
                 isDarkMode
                   ? "bg-emerald-500/10 border-emerald-500/20"
                   : "bg-emerald-50 border-emerald-200"
