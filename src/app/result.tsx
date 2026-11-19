@@ -545,8 +545,6 @@ export default function ResultScreen() {
   );
   const [detailOverrides, setDetailOverrides] =
     usePersistedSetting<DetailOverrides>("card.detailOverrides.v1", {});
-  // Show/hide the "N min read" label on blog/reading cards
-  const [showReadTime, setShowReadTime] = useState(false);
 
   // YouTube extras (auto from worker/scrape when available, else manual)
   const [ytKind, setYtKind] = useState<YouTubeKind | "">("");
@@ -622,7 +620,6 @@ export default function ResultScreen() {
     value: DetailOverrideValue,
   ) {
     if (key === "showCounts" && typeof value === "boolean") return setShowCounts(value);
-    if (key === "showReadTime" && typeof value === "boolean") return setShowReadTime(value);
     if (key === "verified" && typeof value === "boolean") return setTweetVerified(value);
     if (key === "youtubeKind" && typeof value === "string")
       return setYtKind(value as YouTubeKind | "");
@@ -742,7 +739,6 @@ export default function ResultScreen() {
     setBookPages(result.pages != null ? String(result.pages) : "");
     setLaunchTagline(result.tagline || "");
     setLaunchUpvotes(result.upvotes != null ? String(result.upvotes) : "");
-    setShowReadTime((result.readingMinutes ?? 0) > 0);
     if (result.isTwitch) {
       // Without worker creds the title/author are empty — keep the handle
       // handy so the card still labels the channel.
@@ -1426,6 +1422,48 @@ export default function ResultScreen() {
         },
       ];
     }
+    if (t === "medium" || t === "blogspot" || t === "devto" || t === "wordpress") {
+      // Long-form cards show author, date and reading time, but have no brand
+      // pill, so a location/brand input would do nothing.
+      return [
+        {
+          key: "author",
+          value: author,
+          setter: setAuthor,
+          placeholder: "Author (e.g. Eric Cai)",
+          keyboard: "default" as const,
+        },
+        {
+          key: "readMinutes",
+          value: readMinutes,
+          setter: setReadMinutes,
+          placeholder: "Read time mins (e.g. 5)",
+          keyboard: "numeric" as const,
+        },
+        {
+          key: "dateText",
+          value: dateText,
+          setter: setDateText,
+          placeholder: "Date (e.g. Sep 15, 2026)",
+          keyboard: "default" as const,
+        },
+      ];
+    }
+    if (t === "kukufm" || t === "applepodcasts" || t === "pocketfm") {
+      // Podcast cards only surface the host/show name.
+      return [
+        {
+          key: "author",
+          value: author,
+          setter: setAuthor,
+          placeholder:
+            t === "applepodcasts"
+              ? "Show (e.g. The Daily)"
+              : "Host (e.g. Amit)",
+          keyboard: "default" as const,
+        },
+      ];
+    }
     return [
       {
         key: "author",
@@ -1613,6 +1651,16 @@ export default function ResultScreen() {
   );
   const cardWidth = Math.min(containerWidth, maxCardHeight * (9 / 16));
 
+  // Read time is decided per template: an explicit saved toggle wins, otherwise
+  // it shows automatically as soon as a reading time exists (parsed from the
+  // page or typed into the Edit panel).
+  const hasReadTime =
+    (preview?.readingMinutes ?? 0) > 0 ||
+    (parseInt(readMinutes.replace(/\D/g, ""), 10) || 0) > 0;
+  const savedReadTime = detailOverrides[theme]?.showReadTime;
+  const readTimeVisible =
+    typeof savedReadTime === "boolean" ? savedReadTime : hasReadTime;
+
   const cardPreviewProps = {
     preview,
     imageFit,
@@ -1630,7 +1678,7 @@ export default function ResultScreen() {
     blurRadius: blurStrength,
     vignette: vignetteStrength / 100,
     hideCounts: !showCounts,
-    hideReadTime: !showReadTime,
+    hideReadTime: !readTimeVisible,
     author,
     readMinutes,
     dateText,
@@ -2913,14 +2961,23 @@ export default function ResultScreen() {
                                   </View>
                                 </Pressable>
                               ) : null}
-                              {["medium", "blogspot", "devto", "linkedarticle", "substack", "wordpress", "hashnode"].includes(
-                                theme,
-                              ) ? (
+                              {[
+                                "medium",
+                                "blogspot",
+                                "devto",
+                                "linkedarticle",
+                                "substack",
+                                "wordpress",
+                                "hashnode",
+                                "linksnap",
+                              ].includes(theme) ? (
                                 <Pressable
                                   onPress={() => {
-                                    const next = !showReadTime;
-                                    setShowReadTime(next);
-                                    rememberDetail(theme, "showReadTime", next);
+                                    rememberDetail(
+                                      theme,
+                                      "showReadTime",
+                                      !readTimeVisible,
+                                    );
                                   }}
                                   className={`flex-row items-center justify-between border rounded-xl px-3.5 h-11 ${"bg-gray-100 border-zinc-200"}`}
                                 >
@@ -2931,13 +2988,13 @@ export default function ResultScreen() {
                                   </Text>
                                   <View
                                     className={`px-3 py-1 rounded-full ${
-                                      showReadTime
+                                      readTimeVisible
                                         ? "bg-emerald-500"
                                         : "bg-zinc-500/30"
                                     }`}
                                   >
                                     <Text className="text-white text-xs font-bold">
-                                      {showReadTime ? "On" : "Off"}
+                                      {readTimeVisible ? "On" : "Off"}
                                     </Text>
                                   </View>
                                 </Pressable>

@@ -2,6 +2,7 @@ import {
   Check,
   ChevronRight,
   Download,
+  Info,
   Monitor,
   Moon,
   Sun,
@@ -9,7 +10,7 @@ import {
   type LucideIcon,
 } from "lucide-react-native";
 import { useState } from "react";
-import { Pressable, Text, View } from "react-native";
+import { Pressable, Text, useWindowDimensions, View } from "react-native";
 
 import { useAppAppearance, type ThemeMode } from "@/contexts/appearance-context";
 import { useUpdate } from "@/contexts/update-context";
@@ -57,6 +58,13 @@ export function SettingsSheet({
   const { checkForUpdates, currentVersion, downloadProgress, installing, release } =
     useUpdate();
   const [view, setView] = useState<SettingsView>("root");
+  const { height: windowHeight } = useWindowDimensions();
+
+  // Settings only has two rows, which made the sheet look squat. Give the
+  // panel a comfortable minimum height so it reads as a sheet on tall screens.
+  const sheetMinHeight = Math.round(
+    Math.min(Math.max(windowHeight * 0.46, 360), 620),
+  );
 
   const close = () => {
     setView("root");
@@ -71,8 +79,21 @@ export function SettingsSheet({
       ? `Update ${release.tagName}`
       : "Up to date";
 
+  const updatesHint = installing
+    ? "Fetching the new build"
+    : release
+      ? `${release.tagName} is ready to install`
+      : `You're on the latest version`;
+
   const themeValue =
     themeMode === "system" ? "System" : themeMode === "dark" ? "Dark" : "Light";
+
+  const themeHint =
+    themeMode === "system"
+      ? "Follows your device appearance"
+      : themeMode === "dark"
+        ? "Always uses the dark theme"
+        : "Always uses the light theme";
 
   const title =
     view === "root" ? "Settings" : view === "theme" ? "Theme" : "Updates";
@@ -86,6 +107,7 @@ export function SettingsSheet({
   return (
     <BottomDrawer
       description={description}
+      minHeight={sheetMinHeight}
       onBack={view === "root" ? undefined : () => setView("root")}
       onClose={close}
       open={open}
@@ -93,50 +115,69 @@ export function SettingsSheet({
     >
       {view === "root" ? (
         <View>
-          <Text
-            className={`text-[11px] font-bold tracking-widest uppercase mb-2 ml-1 ${
-              isDarkMode ? "text-zinc-500" : "text-zinc-400"
-            }`}
-          >
-            Preferences
-          </Text>
-
-          <View
-            className={`rounded-2xl border overflow-hidden ${
-              isDarkMode
-                ? "bg-[#141414] border-zinc-800"
-                : "bg-white border-zinc-200"
-            }`}
-          >
-            <SettingsRow
-              icon={SunMoon}
-              label="Theme"
-              onPress={() => setView("theme")}
-              value={themeValue}
-            />
-            <View
-              className={`h-px ml-14 ${
-                isDarkMode ? "bg-zinc-800" : "bg-zinc-200"
+          <View>
+            <Text
+              className={`text-[11px] font-bold tracking-widest uppercase mb-2 ml-1 ${
+                isDarkMode ? "text-zinc-500" : "text-zinc-400"
               }`}
-            />
-            <SettingsRow
-              icon={Download}
-              label="Updates"
-              onPress={() => {
-                setView("update");
-                void checkForUpdates();
-              }}
-              value={updatesValue}
-            />
-          </View>
+            >
+              Preferences
+            </Text>
 
-          <Text
-            className={`text-[11px] font-semibold text-center mt-6 ${
-              isDarkMode ? "text-zinc-600" : "text-zinc-400"
-            }`}
-          >
-            LinkSnap v{currentVersion}
-          </Text>
+            <View
+              className={`rounded-2xl border overflow-hidden ${
+                isDarkMode
+                  ? "bg-[#141414] border-zinc-800"
+                  : "bg-white border-zinc-200"
+              }`}
+            >
+              <SettingsRow
+                icon={SunMoon}
+                label="Theme"
+                onPress={() => setView("theme")}
+                subtitle={themeHint}
+                value={themeValue}
+              />
+              <View
+                className={`h-px ml-14 ${
+                  isDarkMode ? "bg-zinc-800" : "bg-zinc-200"
+                }`}
+              />
+              <SettingsRow
+                icon={Download}
+                label="Updates"
+                onPress={() => {
+                  setView("update");
+                  void checkForUpdates();
+                }}
+                subtitle={updatesHint}
+                value={updatesValue}
+              />
+            </View>
+
+            <Text
+              className={`text-[11px] font-bold tracking-widest uppercase mt-6 mb-2 ml-1 ${
+                isDarkMode ? "text-zinc-500" : "text-zinc-400"
+              }`}
+            >
+              About
+            </Text>
+
+            <View
+              className={`rounded-2xl border overflow-hidden ${
+                isDarkMode
+                  ? "bg-[#141414] border-zinc-800"
+                  : "bg-white border-zinc-200"
+              }`}
+            >
+              <SettingsRow
+                icon={Info}
+                label="Version"
+                subtitle="LinkSnap for Android"
+                value={`v${currentVersion}`}
+              />
+            </View>
+          </View>
         </View>
       ) : null}
 
@@ -210,14 +251,60 @@ function SettingsRow({
   icon: Icon,
   label,
   onPress,
+  subtitle,
   value,
 }: {
   icon: LucideIcon;
   label: string;
-  onPress: () => void;
+  onPress?: () => void;
+  subtitle?: string;
   value: string;
 }) {
   const { isDarkMode } = useAppAppearance();
+
+  const body = (
+    <>
+      <View
+        className={`w-10 h-10 rounded-xl items-center justify-center mr-3 ${
+          isDarkMode ? "bg-zinc-900" : "bg-zinc-100"
+        }`}
+      >
+        <Icon size={18} color="#10b981" strokeWidth={2.2} />
+      </View>
+
+      <View className="flex-1 min-w-0">
+        <Text
+          className={`text-base font-bold ${
+            isDarkMode ? "text-white" : "text-zinc-900"
+          }`}
+        >
+          {label}
+        </Text>
+        {subtitle ? (
+          <Text className="text-xs mt-0.5 text-zinc-500">{subtitle}</Text>
+        ) : null}
+      </View>
+
+      <Text
+        className={`text-sm font-medium mr-1.5 ${
+          isDarkMode ? "text-zinc-400" : "text-zinc-500"
+        }`}
+      >
+        {value}
+      </Text>
+      {onPress ? (
+        <ChevronRight
+          size={18}
+          color={isDarkMode ? "#71717a" : "#a1a1aa"}
+          strokeWidth={2.2}
+        />
+      ) : null}
+    </>
+  );
+
+  if (!onPress) {
+    return <View className="flex-row items-center px-4 py-4">{body}</View>;
+  }
 
   return (
     <Pressable
@@ -227,34 +314,7 @@ function SettingsRow({
       }`}
       onPress={onPress}
     >
-      <View
-        className={`w-10 h-10 rounded-xl items-center justify-center mr-3 ${
-          isDarkMode ? "bg-zinc-900" : "bg-zinc-100"
-        }`}
-      >
-        <Icon size={18} color="#10b981" strokeWidth={2.2} />
-      </View>
-
-      <Text
-        className={`flex-1 text-base font-bold ${
-          isDarkMode ? "text-white" : "text-zinc-900"
-        }`}
-      >
-        {label}
-      </Text>
-
-      <Text
-        className={`text-sm font-medium mr-1.5 ${
-          isDarkMode ? "text-zinc-400" : "text-zinc-500"
-        }`}
-      >
-        {value}
-      </Text>
-      <ChevronRight
-        size={18}
-        color={isDarkMode ? "#71717a" : "#a1a1aa"}
-        strokeWidth={2.2}
-      />
+      {body}
     </Pressable>
   );
 }

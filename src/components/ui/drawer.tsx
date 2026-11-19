@@ -30,6 +30,11 @@ type BottomDrawerProps = {
   /** Small line under the title, e.g. "You are on 1.0.0". */
   description?: string;
   title?: string;
+  /**
+   * Minimum panel height in points. Keeps short content from producing a squat
+   * sheet; the body stretches so the panel always fills this height.
+   */
+  minHeight?: number;
 };
 
 /**
@@ -44,6 +49,7 @@ export function BottomDrawer({
   description,
   dismissible = true,
   footer,
+  minHeight,
   onBack,
   onClose,
   open,
@@ -164,6 +170,7 @@ export function BottomDrawer({
             borderTopRightRadius: 28,
             borderTopWidth: 1,
             maxHeight: "88%",
+            ...(minHeight ? { minHeight } : null),
           }}
         >
           <View className="items-center pt-3 pb-1">

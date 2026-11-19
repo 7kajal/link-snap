@@ -702,11 +702,6 @@ const LinkCardView = forwardRef<View, LinkCardViewProps>(function LinkCardView(
   const palette = getPalette(domainFromUrl(url));
   const authorName = cleanAuthor(author || preview?.author, publisher);
   const minutes = readMinutesOf(readMinutes, preview || null);
-  // A generic link isn't necessarily an article — only show "N min read" when a
-  // real reading time exists (parsed from the page or entered manually).
-  const manualRead = readMinutes ? parseInt(readMinutes.replace(/\D/g, ""), 10) : NaN;
-  const hasReadTime =
-    !hideReadTime && ((preview?.readingMinutes ?? 0) > 0 || (Number.isFinite(manualRead) && manualRead > 0));
   const dateLabel = (dateText || "").trim() || formatDateLabel(preview?.publishedAt || null);
   const pill = (location || "").trim() || preview?.siteName?.trim() || domainFromUrl(url);
 
@@ -1344,9 +1339,10 @@ const LinkCardView = forwardRef<View, LinkCardViewProps>(function LinkCardView(
           title={title}
           excerpt={excerpt}
           authorName={authorName}
-          brandName={preview?.siteName?.trim() || publisher}
+          brandName={pill}
           minutes={minutes}
-          showReadTime={hasReadTime}
+          showReadTime={!hideReadTime}
+          dateLabel={dateLabel}
           image={previewImage}
           favicon={favicon ?? preview?.favicon ?? null}
         />
@@ -3277,6 +3273,7 @@ function DynamicCard({
   brandName,
   minutes,
   showReadTime,
+  dateLabel,
   image,
   favicon,
 }: {
@@ -3288,6 +3285,7 @@ function DynamicCard({
   brandName: string;
   minutes: number;
   showReadTime: boolean;
+  dateLabel: string;
   image: string | null;
   favicon: string | null;
 }) {
@@ -3314,10 +3312,19 @@ function DynamicCard({
           </Text>
         ) : null}
       </View>
-      {showReadTime ? (
-        <Text style={[styles.dynReadTime, { color: colors.muted }]} numberOfLines={1}>
-          {`${minutes} min read`}
-        </Text>
+      {showReadTime || dateLabel ? (
+        <View style={styles.dynMeta}>
+          {showReadTime ? (
+            <Text style={[styles.dynReadTime, { color: colors.muted }]} numberOfLines={1}>
+              {`${minutes} min read`}
+            </Text>
+          ) : null}
+          {dateLabel ? (
+            <Text style={[styles.dynDate, { color: colors.muted }]} numberOfLines={1}>
+              {dateLabel}
+            </Text>
+          ) : null}
+        </View>
       ) : null}
     </View>
   );
@@ -6913,6 +6920,14 @@ const styles = StyleSheet.create({
   },
   dynReadTime: {
     fontSize: 12,
+    fontWeight: "400",
+  },
+  dynMeta: {
+    alignItems: "flex-end",
+    gap: 1,
+  },
+  dynDate: {
+    fontSize: 11,
     fontWeight: "400",
   },
 
