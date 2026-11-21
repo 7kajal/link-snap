@@ -11,7 +11,7 @@ on:
 
 jobs:
   validate:
-    name: Lint & Typecheck
+    name: Lint, Typecheck & Bundle
     runs-on: ubuntu-latest
 
     steps:
@@ -37,3 +37,10 @@ jobs:
 
       - name: Typecheck
         run: pnpm exec tsc --noEmit
+
+      # NativeWind's Babel plugins must resolve on a clean pnpm install.
+      # Lint and typechecking do not exercise Metro's bundling pipeline.
+      - name: Export Android bundle
+        env:
+          CI: 1
+        run: pnpm exec expo export --platform android --clear --dump-sourcemap --dump-assetmap
