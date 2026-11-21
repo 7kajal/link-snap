@@ -24,12 +24,12 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
-  Animated as RNAnimated,
   Easing,
   Image,
   LayoutAnimation,
   Platform,
   Pressable,
+  Animated as RNAnimated,
   ScrollView,
   Text,
   TextInput,
@@ -69,8 +69,8 @@ import { hexToHsv, hsvToHex } from "@/lib/palette";
 import { displayToSource, readTilePixel, rgbaToHex } from "@/lib/pixel-sampler";
 import { getSetting, usePersistedSetting } from "@/lib/settings";
 import {
-  getAvailableWhatsAppVariants,
   getAvailableTargets,
+  getAvailableWhatsAppVariants,
   getDefaultAvailableTargets,
   SHARE_TARGETS,
   shareToTarget,
@@ -2132,7 +2132,7 @@ export default function ResultScreen() {
           {/* Top Navigation Bar */}
           <View className="flex-row items-center justify-between mb-6">
             <Pressable
-              onPress={() => router.back()}
+              onPress={() => router.push("/")}
               hitSlop={8}
               className={`p-2.5 rounded-full border ${
                 isDarkMode
